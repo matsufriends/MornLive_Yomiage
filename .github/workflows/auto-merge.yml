@@ -1,4 +1,4 @@
-name: Truly Unhinged Auto Merge
+name: Auto Merge Only yomiage.json
 
 on:
   pull_request:
@@ -11,7 +11,21 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Merge PR instantly
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get changed files
+        id: files
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git diff --name-only origin/${{ github.event.pull_request.base.ref }} HEAD > changed.txt
+          cat changed.txt
+          if [ "$(cat changed.txt | wc -l)" -ne 1 ] || [ "$(cat changed.txt)" != "yomiage.json" ]; then
+            echo "Not only yomiage.json was changed. Exiting."
+            exit 1
+          fi
+
+      - name: Merge PR
         run: gh pr merge "$PR_URL" --merge --admin --delete-branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
