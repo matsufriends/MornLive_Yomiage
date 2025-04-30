@@ -1,4 +1,4 @@
-name: Auto Merge Only yomiage.json
+name: Validate & Auto-Merge yomiage.json
 
 on:
   pull_request:
@@ -14,16 +14,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get changed files
+      - name: Check changed files
         id: files
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git diff --name-only origin/${{ github.event.pull_request.base.ref }} HEAD > changed.txt
           cat changed.txt
-          if [ "$(cat changed.txt | wc -l)" -ne 1 ] || [ "$(cat changed.txt)" != "yomiage.json" ]; then
-            echo "Not only yomiage.json was changed. Exiting."
+          
+          if [ "$(cat changed.txt | wc -l)" -ne 1 ]; then
+            echo "More than one file changed"
             exit 1
           fi
+
+          if [ "$(cat changed.txt)" != "yomiage.json" ]; then
+            echo "Only yomiage.json must be modified"
+            exit 1
+          fi
+
+      - name: Validate JSON
+        run: |
+          cat yomiage.json | jq empty
+        env:
+          # jqでバリデートするだけ。エラーなら exit 1 になる
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Merge PR
         run: gh pr merge "$PR_URL" --merge --admin --delete-branch
