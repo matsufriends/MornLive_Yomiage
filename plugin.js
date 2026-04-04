@@ -45,7 +45,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '2.2.0-debug',
+  version: '2.3.0',
   author: 'matsufriends',
   permissions: ['filter.comment', 'filter.speech'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
@@ -94,43 +94,27 @@ const plugin = {
           console.info('[yomiage-dictionary] PR creation failed:', e.message)
         })
 
-        // 表示・読み上げテキストを書き換え
-        const newText = from + 'は' + to + 'を覚えました！'
-        comment.data.comment = newText
-        if (comment.data.speech != null) comment.data.speech = newText
+        // コメントIDを記録（filterSpeechで読み上げ差し替え用）
+        this._kyouikuMap = this._kyouikuMap || {}
+        this._kyouikuMap[comment.data.id] = from + 'は' + to + 'を覚えました！'
+
+        // 表示テキストを書き換え
+        comment.data.comment = from + 'は' + to + 'を覚えました！'
         console.info('[yomiage-dictionary] Registered:', from, '->', to)
         return comment
       }
-    }
-
-    // 辞書による置換（通常コメント）
-    const dict = this.store.get('dictionary') || {}
-    const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
-    let replaced = text
-    for (const from of keys) {
-      replaced = replaced.split(from).join(dict[from])
-    }
-    if (replaced !== text) {
-      comment.data.comment = replaced
-      if (comment.data.speech != null) comment.data.speech = replaced
     }
 
     return comment
   },
 
   filterSpeech(text, userData, config, comment) {
-    console.info('[yomiage-dictionary] === filterSpeech called ===')
-    console.info('[yomiage-dictionary] text:', text)
-    console.info('[yomiage-dictionary] comment:', comment ? JSON.stringify(comment.data).substring(0, 200) : 'undefined')
-
-    // 教育コマンド
-    const match = text.match(KYOUIKU_PATTERN)
-    if (match) {
-      const from = match[1].trim()
-      const to = match[2].trim()
-      const result = from + 'は' + to + 'を覚えました！'
-      console.info('[yomiage-dictionary] -> override:', result)
-      return result
+    // 教育コマンド → コメントIDで判定して読み上げテキストを丸ごと差し替え
+    if (comment && this._kyouikuMap && this._kyouikuMap[comment.data.id]) {
+      const override = this._kyouikuMap[comment.data.id]
+      delete this._kyouikuMap[comment.data.id]
+      console.info('[yomiage-dictionary] speech override:', override)
+      return override
     }
 
     // 辞書による置換
@@ -139,9 +123,6 @@ const plugin = {
     let result = text
     for (const from of keys) {
       result = result.split(from).join(dict[from])
-    }
-    if (result !== text) {
-      console.info('[yomiage-dictionary] -> replaced:', result)
     }
     return result
   },
