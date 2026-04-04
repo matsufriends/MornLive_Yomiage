@@ -93,6 +93,7 @@ const plugin = {
 
         // 辞書に登録（即時反映）
         const dict = this.store.get('dictionary') || {}
+        const isUpdate = from in dict
         dict[from] = to
         this.store.set('dictionary', dict)
 
@@ -102,7 +103,9 @@ const plugin = {
         })
 
         // 表示・読み上げテキストを書き換え
-        const newText = from + ' は ' + to + ' を覚えました！'
+        const newText = isUpdate
+          ? from + ' は ' + to + ' に上書きしました！'
+          : from + ' は ' + to + ' を覚えました！'
         comment.data.comment = newText
         comment.data.speechText = newText
         console.info('[yomiage-dictionary] Registered:', from, '->', to)
