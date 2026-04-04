@@ -111,7 +111,6 @@ const plugin = {
       replaced = replaced.split(from).join(dict[from])
     }
     if (replaced !== text) {
-      comment.data.comment = replaced
       const nickname = comment.data.nickname || comment.data.displayName || ''
       comment.data.speechText = nickname ? nickname + ' ' + replaced : replaced
     }
