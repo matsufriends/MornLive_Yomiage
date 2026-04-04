@@ -2,10 +2,10 @@ const fs = require('fs')
 const path = require('path')
 const https = require('https')
 
-// 教育コマンドの正規表現: 教育（a=b） or 教育(a=b)  ※=は半角/全角両対応
-const KYOUIKU_PATTERN = /^教育[（(](.+?)[=＝](.+?)[）)]$/
-// 忘却コマンドの正規表現: 忘却（a） or 忘却(a)
-const BOUKYAKU_PATTERN = /^忘却[（(](.+?)[）)]$/
+// 教育コマンド: 教育（a=b）  前後に文字があったり、内部に()（）=＝を含む場合は無視
+const KYOUIKU_PATTERN = /^教育[（(]([^()（）=＝]+)[=＝]([^()（）=＝]+)[）)]$/
+// 忘却コマンド: 忘却（a）  同上
+const BOUKYAKU_PATTERN = /^忘却[（(]([^()（）=＝]+)[）)]$/
 const CONFIG_FILE = 'config.json'
 
 const REPO_OWNER = 'matsufriends'
