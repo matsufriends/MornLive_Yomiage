@@ -104,12 +104,11 @@ const plugin = {
           console.info('[yomiage-dictionary] PR creation failed:', e.message)
         })
 
-        // 表示・読み上げテキストを書き換え
-        const newText = isUpdate
+        // 読み上げテキストのみ書き換え（表示はそのまま）
+        const speechText = isUpdate
           ? from + ' は ' + to + ' に上書きしました！'
           : from + ' は ' + to + ' を覚えました！'
-        comment.data.comment = newText
-        comment.data.speechText = newText
+        comment.data.speechText = speechText
         console.info('[yomiage-dictionary] Registered:', from, '->', to)
         return comment
       }
@@ -136,14 +135,10 @@ const plugin = {
             console.info('[yomiage-dictionary] Delete PR creation failed:', e.message)
           })
 
-          const newText = key + ' を忘れました！'
-          comment.data.comment = newText
-          comment.data.speechText = newText
+          comment.data.speechText = key + ' を忘れました！'
           console.info('[yomiage-dictionary] Deleted:', key)
         } else {
-          const newText = key + ' は覚えていません！'
-          comment.data.comment = newText
-          comment.data.speechText = newText
+          comment.data.speechText = key + ' は覚えていません！'
         }
         return comment
       }
