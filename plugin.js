@@ -47,7 +47,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '3.3.0',
+  version: '3.4.0',
   author: 'matsufriends',
   permissions: ['filter.comment'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
@@ -148,6 +148,9 @@ const plugin = {
       const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
       replaced = replaced.replace(regex, dict[from])
     }
+    // :emote: パターンをエモート名だけに変換（コロン除去）
+    replaced = replaced.replace(/:([a-zA-Z0-9_-]+):/g, '$1')
+
     if (replaced !== text) {
       const nickname = comment.data.nickname || comment.data.displayName || ''
       comment.data.speechText = nickname ? nickname + ' ' + replaced : replaced
