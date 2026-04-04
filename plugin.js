@@ -45,9 +45,9 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '2.1.0',
+  version: '2.2.0-debug',
   author: 'matsufriends',
-  permissions: ['filter.comment'],
+  permissions: ['filter.comment', 'filter.speech'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
   defaultState: {
     dictionary: {},
@@ -116,6 +116,34 @@ const plugin = {
     }
 
     return comment
+  },
+
+  filterSpeech(text, userData, config, comment) {
+    console.info('[yomiage-dictionary] === filterSpeech called ===')
+    console.info('[yomiage-dictionary] text:', text)
+    console.info('[yomiage-dictionary] comment:', comment ? JSON.stringify(comment.data).substring(0, 200) : 'undefined')
+
+    // 教育コマンド
+    const match = text.match(KYOUIKU_PATTERN)
+    if (match) {
+      const from = match[1].trim()
+      const to = match[2].trim()
+      const result = from + 'は' + to + 'を覚えました！'
+      console.info('[yomiage-dictionary] -> override:', result)
+      return result
+    }
+
+    // 辞書による置換
+    const dict = this.store.get('dictionary') || {}
+    const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
+    let result = text
+    for (const from of keys) {
+      result = result.split(from).join(dict[from])
+    }
+    if (result !== text) {
+      console.info('[yomiage-dictionary] -> replaced:', result)
+    }
+    return result
   },
 
   async request(req) {
