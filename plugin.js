@@ -45,9 +45,9 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '2.3.0',
+  version: '2.4.0',
   author: 'matsufriends',
-  permissions: ['filter.comment', 'filter.speech'],
+  permissions: ['filter.comment'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
   defaultState: {
     dictionary: {},
@@ -94,37 +94,27 @@ const plugin = {
           console.info('[yomiage-dictionary] PR creation failed:', e.message)
         })
 
-        // コメントIDを記録（filterSpeechで読み上げ差し替え用）
-        this._kyouikuMap = this._kyouikuMap || {}
-        this._kyouikuMap[comment.data.id] = from + 'は' + to + 'を覚えました！'
-
-        // 表示テキストを書き換え
-        comment.data.comment = from + 'は' + to + 'を覚えました！'
+        // 表示・読み上げテキストを書き換え
+        const newText = from + 'は' + to + 'を覚えました！'
+        comment.data.comment = newText
+        comment.data.speechText = newText
         console.info('[yomiage-dictionary] Registered:', from, '->', to)
         return comment
       }
     }
 
+    // 辞書による置換（通常コメント）
+    if (comment.data.speechText) {
+      const dict = this.store.get('dictionary') || {}
+      const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
+      let replaced = comment.data.speechText
+      for (const from of keys) {
+        replaced = replaced.split(from).join(dict[from])
+      }
+      comment.data.speechText = replaced
+    }
+
     return comment
-  },
-
-  filterSpeech(text, userData, config, comment) {
-    // 教育コマンド → コメントIDで判定して読み上げテキストを丸ごと差し替え
-    if (comment && this._kyouikuMap && this._kyouikuMap[comment.data.id]) {
-      const override = this._kyouikuMap[comment.data.id]
-      delete this._kyouikuMap[comment.data.id]
-      console.info('[yomiage-dictionary] speech override:', override)
-      return override
-    }
-
-    // 辞書による置換
-    const dict = this.store.get('dictionary') || {}
-    const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
-    let result = text
-    for (const from of keys) {
-      result = result.split(from).join(dict[from])
-    }
-    return result
   },
 
   async request(req) {
