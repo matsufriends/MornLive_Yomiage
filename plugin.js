@@ -47,7 +47,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '3.2.0',
+  version: '3.3.0',
   author: 'matsufriends',
   permissions: ['filter.comment'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
@@ -99,10 +99,8 @@ const plugin = {
         dict[from] = to
         this.store.set('dictionary', dict)
 
-        // GitHub PR を非同期で作成
-        this._createPR(from, to).catch((e) => {
-          console.info('[yomiage-dictionary] PR creation failed:', e.message)
-        })
+        // バッチキューに追加（数秒後にまとめてPR作成）
+        this._enqueue({ type: 'add', from, to })
 
         // 読み上げテキストのみ書き換え（表示はそのまま）
         const speechText = isUpdate
@@ -130,10 +128,8 @@ const plugin = {
           delete dict[key]
           this.store.set('dictionary', dict)
 
-          // GitHub PR を非同期で作成（削除）
-          this._createDeletePR(key).catch((e) => {
-            console.info('[yomiage-dictionary] Delete PR creation failed:', e.message)
-          })
+          // バッチキューに追加
+          this._enqueue({ type: 'delete', key })
 
           comment.data.speechText = key + ' を忘れました！'
           console.info('[yomiage-dictionary] Deleted:', key)
@@ -212,16 +208,33 @@ const plugin = {
     }
   },
 
-  // 辞書エントリ追加のPRを作成
-  async _createPR(from, to) {
+  // バッチキューに変更を追加し、5秒後にまとめてPR作成
+  _enqueue(change) {
+    this._batchQueue = this._batchQueue || []
+    this._batchQueue.push(change)
+
+    if (this._batchTimer) clearTimeout(this._batchTimer)
+    this._batchTimer = setTimeout(() => {
+      const queue = this._batchQueue
+      this._batchQueue = []
+      this._batchTimer = null
+      this._flushBatch(queue).catch((e) => {
+        console.info('[yomiage-dictionary] Batch PR failed:', e.message)
+      })
+    }, 5000)
+  },
+
+  // バッチキューの変更をまとめて1つのPRにする
+  async _flushBatch(queue) {
     const token = this.githubToken
     if (!token) {
       console.info('[yomiage-dictionary] GitHub token not set, skipping PR')
       return
     }
+    if (queue.length === 0) return
 
     const timestamp = Date.now()
-    const branchName = `yomiage/${timestamp}/${from}`
+    const branchName = `yomiage/${timestamp}/batch`
 
     // 1. main の最新SHAを取得
     const refRes = await githubApi('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/git/ref/heads/${BASE_BRANCH}`, token)
@@ -240,93 +253,50 @@ const plugin = {
     if (fileRes.status !== 200) throw new Error('Failed to get file: ' + JSON.stringify(fileRes.data))
 
     const currentContent = Buffer.from(fileRes.data.content, 'base64').toString('utf-8')
-    const arr = JSON.parse(currentContent)
+    let arr = JSON.parse(currentContent)
 
-    // 既に同じキーがあれば値を更新、なければ追加
-    const existingIndex = arr.findIndex(([key]) => key === from)
-    if (existingIndex >= 0) {
-      arr[existingIndex] = [from, to]
-    } else {
-      arr.push([from, to])
+    // 4. キューの変更を全て適用
+    const descriptions = []
+    for (const change of queue) {
+      if (change.type === 'add') {
+        const existingIndex = arr.findIndex(([key]) => key === change.from)
+        if (existingIndex >= 0) {
+          arr[existingIndex] = [change.from, change.to]
+        } else {
+          arr.push([change.from, change.to])
+        }
+        descriptions.push(`教育: ${change.from} = ${change.to}`)
+      } else if (change.type === 'delete') {
+        arr = arr.filter(([k]) => k !== change.key)
+        descriptions.push(`忘却: ${change.key}`)
+      }
     }
 
     const newContent = JSON.stringify(arr, null, 4) + '\n'
     const encodedContent = Buffer.from(newContent).toString('base64')
 
-    // 4. ファイル更新
+    // 5. ファイル更新
+    const commitMsg = descriptions.join(', ')
     const updateRes = await githubApi('PUT', `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`, token, {
-      message: `add: ${from} = ${to}`,
+      message: commitMsg,
       content: encodedContent,
       sha: fileRes.data.sha,
       branch: branchName,
     })
     if (updateRes.status !== 200) throw new Error('Failed to update file: ' + JSON.stringify(updateRes.data))
 
-    // 5. PR作成
+    // 6. PR作成
+    const title = queue.length === 1 ? descriptions[0] : `辞書更新 (${queue.length}件)`
+    const body = descriptions.map((d) => `- ${d}`).join('\n')
     const prRes = await githubApi('POST', `/repos/${REPO_OWNER}/${REPO_NAME}/pulls`, token, {
-      title: `教育: ${from} = ${to}`,
-      body: `チャットから辞書登録:\n- **変換前**: ${from}\n- **変換後**: ${to}`,
+      title,
+      body: `チャットから辞書更新:\n${body}`,
       head: branchName,
       base: BASE_BRANCH,
     })
     if (prRes.status !== 201) throw new Error('Failed to create PR: ' + JSON.stringify(prRes.data))
 
-    console.info('[yomiage-dictionary] PR created:', prRes.data.html_url)
-  },
-
-  // 辞書エントリ削除のPRを作成
-  async _createDeletePR(key) {
-    const token = this.githubToken
-    if (!token) {
-      console.info('[yomiage-dictionary] GitHub token not set, skipping PR')
-      return
-    }
-
-    const timestamp = Date.now()
-    const branchName = `yomiage/${timestamp}/delete-${key}`
-
-    const refRes = await githubApi('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/git/ref/heads/${BASE_BRANCH}`, token)
-    if (refRes.status !== 200) throw new Error('Failed to get base ref: ' + JSON.stringify(refRes.data))
-    const baseSha = refRes.data.object.sha
-
-    const branchRes = await githubApi('POST', `/repos/${REPO_OWNER}/${REPO_NAME}/git/refs`, token, {
-      ref: `refs/heads/${branchName}`,
-      sha: baseSha,
-    })
-    if (branchRes.status !== 201) throw new Error('Failed to create branch: ' + JSON.stringify(branchRes.data))
-
-    const fileRes = await githubApi('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${BASE_BRANCH}`, token)
-    if (fileRes.status !== 200) throw new Error('Failed to get file: ' + JSON.stringify(fileRes.data))
-
-    const currentContent = Buffer.from(fileRes.data.content, 'base64').toString('utf-8')
-    const arr = JSON.parse(currentContent)
-
-    const filtered = arr.filter(([k]) => k !== key)
-    if (filtered.length === arr.length) {
-      console.info('[yomiage-dictionary] Key not found in yomiage.json, skipping PR')
-      return
-    }
-
-    const newContent = JSON.stringify(filtered, null, 4) + '\n'
-    const encodedContent = Buffer.from(newContent).toString('base64')
-
-    const updateRes = await githubApi('PUT', `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`, token, {
-      message: `delete: ${key}`,
-      content: encodedContent,
-      sha: fileRes.data.sha,
-      branch: branchName,
-    })
-    if (updateRes.status !== 200) throw new Error('Failed to update file: ' + JSON.stringify(updateRes.data))
-
-    const prRes = await githubApi('POST', `/repos/${REPO_OWNER}/${REPO_NAME}/pulls`, token, {
-      title: `忘却: ${key}`,
-      body: `チャットから辞書削除:\n- **削除キー**: ${key}`,
-      head: branchName,
-      base: BASE_BRANCH,
-    })
-    if (prRes.status !== 201) throw new Error('Failed to create PR: ' + JSON.stringify(prRes.data))
-
-    console.info('[yomiage-dictionary] Delete PR created:', prRes.data.html_url)
+    console.info('[yomiage-dictionary] Batch PR created:', prRes.data.html_url, `(${queue.length} changes)`)
   },
 }
 
