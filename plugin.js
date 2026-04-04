@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const http = require('http')
 const https = require('https')
 
 // 教育コマンドの正規表現: 教育（a=b） or 教育(a=b)  ※=は半角/全角両対応
@@ -45,9 +46,9 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '1.2.0',
+  version: '2.0.0',
   author: 'matsufriends',
-  permissions: ['filter.comment', 'filter.speech'],
+  permissions: ['comments', 'filter.comment'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
   defaultState: {
     dictionary: {},
@@ -76,6 +77,7 @@ const plugin = {
 
   destroy() {},
 
+  // 教育コマンドを検知して表示テキストを書き換え
   filterComment(comment) {
     const text = comment.data.comment
     const match = text.match(KYOUIKU_PATTERN)
@@ -90,36 +92,42 @@ const plugin = {
     dict[from] = to
     this.store.set('dictionary', dict)
 
-    // GitHub PR を非同期で作成（読み上げをブロックしない）
+    // GitHub PR を非同期で作成
     this._createPR(from, to).catch((e) => {
       console.info('[yomiage-dictionary] PR creation failed:', e.message)
     })
-
-    // 教育コマンドの読み上げテキストを記録（filterSpeechで差し替え用）
-    this._speechOverrides = this._speechOverrides || {}
-    this._speechOverrides[comment.data.id] = from + 'は' + to + 'を覚えました！'
 
     // 表示テキストを書き換え
     comment.data.comment = from + 'は' + to + 'を覚えました！'
     return comment
   },
 
-  filterSpeech(text, userData, config, comment) {
-    // 教育コマンドの読み上げを差し替え
-    if (comment && this._speechOverrides && this._speechOverrides[comment.data.id]) {
-      const override = this._speechOverrides[comment.data.id]
-      delete this._speechOverrides[comment.data.id]
-      return override
-    }
+  // 全コメントを受信して読み上げAPIで読み上げ
+  subscribe(type, ...args) {
+    if (type !== 'comments') return
+    const comments = args[0]
+    for (const comment of comments) {
+      let text = comment.data.comment
 
-    // 辞書による置換
-    const dict = this.store.get('dictionary') || {}
-    let result = text
-    const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
-    for (const from of keys) {
-      result = result.split(from).join(dict[from])
+      // 教育コマンドの場合は「覚えました」を読み上げ
+      const match = text.match(KYOUIKU_PATTERN)
+      if (match) {
+        const from = match[1].trim()
+        const to = match[2].trim()
+        if (from && to) {
+          this._speak(from + 'は' + to + 'を覚えました！')
+          continue
+        }
+      }
+
+      // 辞書による置換を適用して読み上げ
+      const dict = this.store.get('dictionary') || {}
+      const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
+      for (const from of keys) {
+        text = text.split(from).join(dict[from])
+      }
+      this._speak(text)
     }
-    return result
   },
 
   async request(req) {
@@ -150,6 +158,23 @@ const plugin = {
       }
     }
     return { code: 404, response: {} }
+  },
+
+  // わんコメの読み上げAPIにテキストを送信
+  _speak(text) {
+    const data = JSON.stringify({ text })
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: 11180,
+      path: '/api/speech',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+    }, (res) => {
+      res.resume()
+    })
+    req.on('error', (e) => console.info('[yomiage-dictionary] Speech API error:', e.message))
+    req.write(data)
+    req.end()
   },
 
   // GitHubからyomiage.jsonを取得してstoreにマージ
