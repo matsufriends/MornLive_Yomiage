@@ -4,6 +4,8 @@ const https = require('https')
 
 // 教育コマンドの正規表現: 教育（a=b） or 教育(a=b)  ※=は半角/全角両対応
 const KYOUIKU_PATTERN = /^教育[（(](.+?)[=＝](.+?)[）)]$/
+// 忘却コマンドの正規表現: 忘却（a） or 忘却(a)
+const BOUKYAKU_PATTERN = /^忘却[（(](.+?)[）)]$/
 const CONFIG_FILE = 'config.json'
 
 const REPO_OWNER = 'matsufriends'
@@ -109,6 +111,40 @@ const plugin = {
         comment.data.comment = newText
         comment.data.speechText = newText
         console.info('[yomiage-dictionary] Registered:', from, '->', to)
+        return comment
+      }
+    }
+
+    // 忘却コマンド
+    const boukyakuMatch = text.match(BOUKYAKU_PATTERN)
+    if (boukyakuMatch) {
+      const key = boukyakuMatch[1].trim()
+      if (key) {
+        this._processedIds = this._processedIds || new Set()
+        if (this._processedIds.has(comment.data.id)) {
+          return comment
+        }
+        this._processedIds.add(comment.data.id)
+
+        const dict = this.store.get('dictionary') || {}
+        if (key in dict) {
+          delete dict[key]
+          this.store.set('dictionary', dict)
+
+          // GitHub PR を非同期で作成（削除）
+          this._createDeletePR(key).catch((e) => {
+            console.info('[yomiage-dictionary] Delete PR creation failed:', e.message)
+          })
+
+          const newText = key + ' を忘れました！'
+          comment.data.comment = newText
+          comment.data.speechText = newText
+          console.info('[yomiage-dictionary] Deleted:', key)
+        } else {
+          const newText = key + ' は覚えていません！'
+          comment.data.comment = newText
+          comment.data.speechText = newText
+        }
         return comment
       }
     }
@@ -240,6 +276,61 @@ const plugin = {
     if (prRes.status !== 201) throw new Error('Failed to create PR: ' + JSON.stringify(prRes.data))
 
     console.info('[yomiage-dictionary] PR created:', prRes.data.html_url)
+  },
+
+  // 辞書エントリ削除のPRを作成
+  async _createDeletePR(key) {
+    const token = this.githubToken
+    if (!token) {
+      console.info('[yomiage-dictionary] GitHub token not set, skipping PR')
+      return
+    }
+
+    const timestamp = Date.now()
+    const branchName = `yomiage/${timestamp}/delete-${key}`
+
+    const refRes = await githubApi('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/git/ref/heads/${BASE_BRANCH}`, token)
+    if (refRes.status !== 200) throw new Error('Failed to get base ref: ' + JSON.stringify(refRes.data))
+    const baseSha = refRes.data.object.sha
+
+    const branchRes = await githubApi('POST', `/repos/${REPO_OWNER}/${REPO_NAME}/git/refs`, token, {
+      ref: `refs/heads/${branchName}`,
+      sha: baseSha,
+    })
+    if (branchRes.status !== 201) throw new Error('Failed to create branch: ' + JSON.stringify(branchRes.data))
+
+    const fileRes = await githubApi('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${BASE_BRANCH}`, token)
+    if (fileRes.status !== 200) throw new Error('Failed to get file: ' + JSON.stringify(fileRes.data))
+
+    const currentContent = Buffer.from(fileRes.data.content, 'base64').toString('utf-8')
+    const arr = JSON.parse(currentContent)
+
+    const filtered = arr.filter(([k]) => k !== key)
+    if (filtered.length === arr.length) {
+      console.info('[yomiage-dictionary] Key not found in yomiage.json, skipping PR')
+      return
+    }
+
+    const newContent = JSON.stringify(filtered, null, 4) + '\n'
+    const encodedContent = Buffer.from(newContent).toString('base64')
+
+    const updateRes = await githubApi('PUT', `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`, token, {
+      message: `delete: ${key}`,
+      content: encodedContent,
+      sha: fileRes.data.sha,
+      branch: branchName,
+    })
+    if (updateRes.status !== 200) throw new Error('Failed to update file: ' + JSON.stringify(updateRes.data))
+
+    const prRes = await githubApi('POST', `/repos/${REPO_OWNER}/${REPO_NAME}/pulls`, token, {
+      title: `忘却: ${key}`,
+      body: `チャットから辞書削除:\n- **削除キー**: ${key}`,
+      head: branchName,
+      base: BASE_BRANCH,
+    })
+    if (prRes.status !== 201) throw new Error('Failed to create PR: ' + JSON.stringify(prRes.data))
+
+    console.info('[yomiage-dictionary] Delete PR created:', prRes.data.html_url)
   },
 }
 
