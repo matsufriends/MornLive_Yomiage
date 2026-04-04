@@ -84,6 +84,13 @@ const plugin = {
       const from = match[1].trim()
       const to = match[2].trim()
       if (from && to) {
+        // 同じコメントIDの重複処理を防止
+        this._processedIds = this._processedIds || new Set()
+        if (this._processedIds.has(comment.data.id)) {
+          return comment
+        }
+        this._processedIds.add(comment.data.id)
+
         // 辞書に登録（即時反映）
         const dict = this.store.get('dictionary') || {}
         dict[from] = to
