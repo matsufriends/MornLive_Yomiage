@@ -101,6 +101,15 @@ const plugin = {
   },
 
   filterSpeech(text) {
+    // 教育コマンドの読み上げを「覚えました」に置換
+    const match = text.match(KYOUIKU_PATTERN)
+    if (match) {
+      const from = match[1].trim()
+      const to = match[2].trim()
+      return from + 'は' + to + 'を覚えました！'
+    }
+
+    // 辞書による置換
     const dict = this.store.get('dictionary') || {}
     let result = text
     const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
