@@ -103,15 +103,17 @@ const plugin = {
       }
     }
 
-    // 辞書による置換（通常コメント）
-    if (comment.data.speechText) {
-      const dict = this.store.get('dictionary') || {}
-      const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
-      let replaced = comment.data.speechText
-      for (const from of keys) {
-        replaced = replaced.split(from).join(dict[from])
-      }
-      comment.data.speechText = replaced
+    // 辞書による置換（元テキストに適用してspeechTextを再構成）
+    const dict = this.store.get('dictionary') || {}
+    const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
+    let replaced = text
+    for (const from of keys) {
+      replaced = replaced.split(from).join(dict[from])
+    }
+    if (replaced !== text) {
+      comment.data.comment = replaced
+      const nickname = comment.data.nickname || comment.data.displayName || ''
+      comment.data.speechText = nickname ? nickname + ' ' + replaced : replaced
     }
 
     return comment
