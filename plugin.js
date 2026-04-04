@@ -95,18 +95,23 @@ const plugin = {
       console.info('[yomiage-dictionary] PR creation failed:', e.message)
     })
 
-    // 読み上げテキストを書き換え
+    // 読み上げAPIで「覚えました」を直接送信
+    this._speak(from + 'は' + to + 'を覚えました！')
+
+    // 教育コマンドであることを記録（filterSpeechでスキップ用）
+    this._skipCommentIds = this._skipCommentIds || new Set()
+    this._skipCommentIds.add(comment.data.id)
+
+    // 表示テキストを書き換え
     comment.data.comment = from + 'は' + to + 'を覚えました！'
     return comment
   },
 
-  filterSpeech(text) {
-    // 教育コマンドの読み上げを「覚えました」に置換
-    const match = text.match(KYOUIKU_PATTERN)
-    if (match) {
-      const from = match[1].trim()
-      const to = match[2].trim()
-      return from + 'は' + to + 'を覚えました！'
+  filterSpeech(text, userData, config, comment) {
+    // 教育コマンドの読み上げはスキップ（_speakで既に読み上げ済み）
+    if (comment && this._skipCommentIds && this._skipCommentIds.has(comment.data.id)) {
+      this._skipCommentIds.delete(comment.data.id)
+      return false
     }
 
     // 辞書による置換
@@ -147,6 +152,24 @@ const plugin = {
       }
     }
     return { code: 404, response: {} }
+  },
+
+  // わんコメの読み上げAPIにテキストを送信
+  _speak(text) {
+    const http = require('http')
+    const data = JSON.stringify({ text })
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: 11180,
+      path: '/api/speech',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+    }, (res) => {
+      res.resume()
+    })
+    req.on('error', (e) => console.info('[yomiage-dictionary] Speech API error:', e.message))
+    req.write(data)
+    req.end()
   },
 
   // GitHubからyomiage.jsonを取得してstoreにマージ
