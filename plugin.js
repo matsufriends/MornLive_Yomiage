@@ -47,7 +47,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '3.0.0',
+  version: '3.1.0',
   author: 'matsufriends',
   permissions: ['filter.comment'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
