@@ -47,7 +47,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '3.4.0',
+  version: '3.4.1-debug',
   author: 'matsufriends',
   permissions: ['filter.comment'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
@@ -80,6 +80,8 @@ const plugin = {
 
   filterComment(comment) {
     const text = comment.data.comment
+    console.info('[yomiage-dictionary] comment:', text)
+    console.info('[yomiage-dictionary] speechText(before):', comment.data.speechText)
     const match = text.match(KYOUIKU_PATTERN)
 
     if (match) {
@@ -156,6 +158,7 @@ const plugin = {
       comment.data.speechText = nickname ? nickname + ' ' + replaced : replaced
     }
 
+    console.info('[yomiage-dictionary] speechText(after):', comment.data.speechText)
     return comment
   },
 
