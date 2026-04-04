@@ -47,7 +47,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '3.4.1-debug',
+  version: '3.5.0',
   author: 'matsufriends',
   permissions: ['filter.comment'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
@@ -80,8 +80,6 @@ const plugin = {
 
   filterComment(comment) {
     const text = comment.data.comment
-    console.info('[yomiage-dictionary] comment:', text)
-    console.info('[yomiage-dictionary] speechText(before):', comment.data.speechText)
     const match = text.match(KYOUIKU_PATTERN)
 
     if (match) {
@@ -142,23 +140,18 @@ const plugin = {
       }
     }
 
-    // 辞書による置換（元テキストに適用してspeechTextを再構成）
-    const dict = this.store.get('dictionary') || {}
-    const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
-    let replaced = text
-    for (const from of keys) {
-      const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-      replaced = replaced.replace(regex, dict[from])
-    }
-    // :emote: パターンをエモート名だけに変換（コロン除去）
-    replaced = replaced.replace(/:([a-zA-Z0-9_-]+):/g, '$1')
-
-    if (replaced !== text) {
-      const nickname = comment.data.nickname || comment.data.displayName || ''
-      comment.data.speechText = nickname ? nickname + ' ' + replaced : replaced
+    // 辞書による置換（speechTextに直接適用）
+    if (comment.data.speechText) {
+      const dict = this.store.get('dictionary') || {}
+      const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
+      let speech = comment.data.speechText
+      for (const from of keys) {
+        const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+        speech = speech.replace(regex, dict[from])
+      }
+      comment.data.speechText = speech
     }
 
-    console.info('[yomiage-dictionary] speechText(after):', comment.data.speechText)
     return comment
   },
 
