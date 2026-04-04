@@ -95,7 +95,7 @@ const plugin = {
         })
 
         // 表示・読み上げテキストを書き換え
-        const newText = from + 'は' + to + 'を覚えました！'
+        const newText = from + ' は ' + to + ' を覚えました！'
         comment.data.comment = newText
         comment.data.speechText = newText
         console.info('[yomiage-dictionary] Registered:', from, '->', to)
