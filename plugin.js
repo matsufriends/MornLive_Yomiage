@@ -45,7 +45,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '1.1.0',
+  version: '1.2.0',
   author: 'matsufriends',
   permissions: ['filter.comment', 'filter.speech'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
@@ -95,12 +95,9 @@ const plugin = {
       console.info('[yomiage-dictionary] PR creation failed:', e.message)
     })
 
-    // 読み上げAPIで「覚えました」を直接送信
-    this._speak(from + 'は' + to + 'を覚えました！')
-
-    // 教育コマンドであることを記録（filterSpeechでスキップ用）
-    this._skipCommentIds = this._skipCommentIds || new Set()
-    this._skipCommentIds.add(comment.data.id)
+    // 教育コマンドの読み上げテキストを記録（filterSpeechで差し替え用）
+    this._speechOverrides = this._speechOverrides || {}
+    this._speechOverrides[comment.data.id] = from + 'は' + to + 'を覚えました！'
 
     // 表示テキストを書き換え
     comment.data.comment = from + 'は' + to + 'を覚えました！'
@@ -108,10 +105,11 @@ const plugin = {
   },
 
   filterSpeech(text, userData, config, comment) {
-    // 教育コマンドの読み上げはスキップ（_speakで既に読み上げ済み）
-    if (comment && this._skipCommentIds && this._skipCommentIds.has(comment.data.id)) {
-      this._skipCommentIds.delete(comment.data.id)
-      return false
+    // 教育コマンドの読み上げを差し替え
+    if (comment && this._speechOverrides && this._speechOverrides[comment.data.id]) {
+      const override = this._speechOverrides[comment.data.id]
+      delete this._speechOverrides[comment.data.id]
+      return override
     }
 
     // 辞書による置換
@@ -152,24 +150,6 @@ const plugin = {
       }
     }
     return { code: 404, response: {} }
-  },
-
-  // わんコメの読み上げAPIにテキストを送信
-  _speak(text) {
-    const http = require('http')
-    const data = JSON.stringify({ text })
-    const req = http.request({
-      hostname: '127.0.0.1',
-      port: 11180,
-      path: '/api/speech',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-    }, (res) => {
-      res.resume()
-    })
-    req.on('error', (e) => console.info('[yomiage-dictionary] Speech API error:', e.message))
-    req.write(data)
-    req.end()
   },
 
   // GitHubからyomiage.jsonを取得してstoreにマージ
