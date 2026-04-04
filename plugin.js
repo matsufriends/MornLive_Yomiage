@@ -1,7 +1,10 @@
+const fs = require('fs')
+const path = require('path')
 const https = require('https')
 
 // 教育コマンドの正規表現: 教育（a=b） or 教育(a=b)  ※=は半角/全角両対応
 const KYOUIKU_PATTERN = /^教育[（(](.+?)[=＝](.+?)[）)]$/
+const CONFIG_FILE = 'config.json'
 
 const REPO_OWNER = 'matsufriends'
 const REPO_NAME = 'MornLive_Yomiage'
@@ -48,13 +51,25 @@ const plugin = {
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
   defaultState: {
     dictionary: {},
-    githubToken: '',
   },
 
   store: null,
+  githubToken: '',
 
   init({ dir, store }) {
     this.store = store
+    this.dir = dir
+
+    // config.json からトークンを読み込み
+    try {
+      const configPath = path.join(dir, CONFIG_FILE)
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      this.githubToken = config.githubToken || ''
+      console.info('[yomiage-dictionary] Token loaded from config.json')
+    } catch (e) {
+      console.info('[yomiage-dictionary] config.json not found. Create it with: {"githubToken": "github_pat_xxx"}')
+    }
+
     // 起動時にGitHubからyomiage.jsonを取得して辞書を同期
     this._syncFromGitHub()
   },
@@ -102,14 +117,11 @@ const plugin = {
           code: 200,
           response: {
             dictionary: this.store.get('dictionary') || {},
-            githubToken: this.store.get('githubToken') ? '(set)' : '(not set)',
+            githubToken: this.githubToken ? '(set)' : '(not set)',
           },
         }
       case 'PUT': {
         const data = JSON.parse(req.body)
-        if (data.githubToken !== undefined) {
-          this.store.set('githubToken', data.githubToken)
-        }
         if (data.dictionary !== undefined) {
           this.store.set('dictionary', data.dictionary)
         }
@@ -130,7 +142,7 @@ const plugin = {
 
   // GitHubからyomiage.jsonを取得してstoreにマージ
   async _syncFromGitHub() {
-    const token = this.store.get('githubToken')
+    const token = this.githubToken
     if (!token) return
 
     try {
@@ -152,7 +164,7 @@ const plugin = {
 
   // 辞書エントリ追加のPRを作成
   async _createPR(from, to) {
-    const token = this.store.get('githubToken')
+    const token = this.githubToken
     if (!token) {
       console.info('[yomiage-dictionary] GitHub token not set, skipping PR')
       return
