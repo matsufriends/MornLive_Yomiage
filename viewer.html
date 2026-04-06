@@ -136,8 +136,10 @@ function createCharacter(userId, name, profileImage) {
   nameEl.textContent = name;
   el.appendChild(nameEl);
 
-  const startX = MARGIN + Math.random() * (window.innerWidth - CHAR_WIDTH - MARGIN * 2);
-  const startY = MARGIN + Math.random() * (window.innerHeight - CHAR_HEIGHT - MARGIN * 2);
+  const rangeX = Math.max(0, window.innerWidth - CHAR_WIDTH - MARGIN * 2);
+  const rangeY = Math.max(0, window.innerHeight - CHAR_HEIGHT - MARGIN * 2);
+  const startX = MARGIN + Math.random() * rangeX;
+  const startY = MARGIN + Math.random() * rangeY;
   el.style.left = startX + 'px';
   el.style.top = startY + 'px';
 
