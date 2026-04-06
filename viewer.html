@@ -33,8 +33,9 @@
     max-width: 500px;
     word-wrap: break-word;
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    opacity: 0;
-    transition: opacity 0.3s;
+    transform: translateX(-50%) scale(0);
+    transform-origin: bottom center;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     pointer-events: none;
     white-space: pre-wrap;
   }
@@ -50,7 +51,7 @@
     border-top: 8px solid rgba(255, 255, 255, 0.95);
   }
   .character .bubble.visible {
-    opacity: 1;
+    transform: translateX(-50%) scale(1);
   }
 
   .character .avatar {
@@ -84,7 +85,7 @@
 <body>
 <script src="http://localhost:11180/templates/preset/__origin/js/onesdk.js"></script>
 <script>
-const BUBBLE_DURATION = 30000;
+const BUBBLE_DURATION = 10000;
 const MOVE_INTERVAL_MIN = 2000;
 const MOVE_INTERVAL_MAX = 6000;
 const SPEED = 1.5;
@@ -222,13 +223,24 @@ function animate() {
 }
 
 // OneSDKで接続
+let initialized = false;
 OneSDK.setup({ mode: 'all' });
 OneSDK.subscribe({
   action: 'comments',
   callback: (comments) => {
     for (const comment of comments) {
-      handleComment(comment);
+      const userId = comment.data.userId;
+      const name = comment.data.nickname || comment.data.displayName || comment.data.name;
+      const profileImage = comment.data.profileImage;
+      if (!characters[userId]) {
+        createCharacter(userId, name, profileImage);
+      }
+      // 初回ロード時は吹き出しを出さない（アイコンだけ復元）
+      if (initialized) {
+        showBubble(userId, stripHtml(comment.data.comment));
+      }
     }
+    initialized = true;
   }
 });
 OneSDK.connect();
