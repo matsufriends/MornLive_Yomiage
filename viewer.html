@@ -90,6 +90,7 @@ const SPEED = 1.5;
 const FLEE_SPEED = 4;
 const PERSONAL_SPACE = 200;
 const FLEE_DURATION = 2000;
+const MARGIN = 224; // アイコン2個分の余白
 const CHAR_WIDTH = 140;
 const CHAR_HEIGHT = 160;
 
@@ -134,8 +135,8 @@ function createCharacter(userId, name, profileImage) {
   nameEl.textContent = name;
   el.appendChild(nameEl);
 
-  const startX = Math.random() * (window.innerWidth - CHAR_WIDTH);
-  const startY = Math.random() * (window.innerHeight - CHAR_HEIGHT);
+  const startX = MARGIN + Math.random() * (window.innerWidth - CHAR_WIDTH - MARGIN * 2);
+  const startY = MARGIN + Math.random() * (window.innerHeight - CHAR_HEIGHT - MARGIN * 2);
   el.style.left = startX + 'px';
   el.style.top = startY + 'px';
 
@@ -218,10 +219,10 @@ function startWandering(userId) {
         return;
       }
 
-      const maxX = window.innerWidth - CHAR_WIDTH;
-      const maxY = window.innerHeight - CHAR_HEIGHT;
-      char.targetX = Math.random() * maxX;
-      char.targetY = Math.random() * maxY;
+      const maxX = window.innerWidth - CHAR_WIDTH - MARGIN;
+      const maxY = window.innerHeight - CHAR_HEIGHT - MARGIN;
+      char.targetX = MARGIN + Math.random() * (maxX - MARGIN);
+      char.targetY = MARGIN + Math.random() * (maxY - MARGIN);
       char.moving = true;
 
       wander();
@@ -249,8 +250,8 @@ function animate() {
         // 反対方向に逃げ先を設定
         const awayX = char.x + (dx / dist) * PERSONAL_SPACE * 1.5;
         const awayY = char.y + (dy / dist) * PERSONAL_SPACE * 1.5;
-        char.targetX = Math.max(0, Math.min(window.innerWidth - CHAR_WIDTH, awayX));
-        char.targetY = Math.max(0, Math.min(window.innerHeight - CHAR_HEIGHT, awayY));
+        char.targetX = Math.max(MARGIN, Math.min(window.innerWidth - CHAR_WIDTH - MARGIN, awayX));
+        char.targetY = Math.max(MARGIN, Math.min(window.innerHeight - CHAR_HEIGHT - MARGIN, awayY));
         char.moving = true;
         char.fleeUntil = now + FLEE_DURATION;
         break;
