@@ -255,24 +255,25 @@ function animate() {
 }
 
 // OneSDKで接続
-let initialized = false;
+const seenCommentIds = new Set();
 OneSDK.setup({ mode: 'all' });
 OneSDK.subscribe({
   action: 'comments',
   callback: (comments) => {
     for (const comment of comments) {
+      const commentId = comment.data.id;
       const userId = comment.data.userId;
       const name = comment.data.nickname || comment.data.displayName || comment.data.name;
       const profileImage = comment.data.profileImage;
       if (!characters[userId]) {
         createCharacter(userId, name, profileImage);
       }
-      // 初回ロード時は吹き出しを出さない（アイコンだけ復元）
-      if (initialized) {
+      // 未処理のコメントだけ吹き出しを表示
+      if (!seenCommentIds.has(commentId)) {
+        seenCommentIds.add(commentId);
         showBubble(userId, stripHtml(comment.data.comment));
       }
     }
-    initialized = true;
   }
 });
 OneSDK.connect();
