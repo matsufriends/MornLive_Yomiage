@@ -14,11 +14,9 @@
 
   .character {
     position: absolute;
-    bottom: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    transition: transform 0.1s;
   }
 
   .character .bubble {
@@ -28,8 +26,8 @@
     transform: translateX(-50%);
     background: rgba(255, 255, 255, 0.95);
     border-radius: 12px;
-    padding: 8px 14px;
-    font-size: 14px;
+    padding: 16px 24px;
+    font-size: 28px;
     line-height: 1.4;
     min-width: 180px;
     max-width: 360px;
@@ -66,11 +64,11 @@
 
   .character .name {
     margin-top: 2px;
-    font-size: 11px;
+    font-size: 22px;
     color: #fff;
     text-shadow: 0 1px 3px rgba(0,0,0,0.8);
     text-align: center;
-    max-width: 80px;
+    max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -84,7 +82,8 @@ const BUBBLE_DURATION = 6000;
 const MOVE_INTERVAL_MIN = 2000;
 const MOVE_INTERVAL_MAX = 6000;
 const SPEED = 1.5;
-const CHAR_WIDTH = 90;
+const CHAR_WIDTH = 140;
+const CHAR_HEIGHT = 160;
 
 const characters = {};
 
@@ -128,7 +127,9 @@ function createCharacter(userId, name, profileImage) {
   el.appendChild(nameEl);
 
   const startX = Math.random() * (window.innerWidth - CHAR_WIDTH);
+  const startY = Math.random() * (window.innerHeight - CHAR_HEIGHT);
   el.style.left = startX + 'px';
+  el.style.top = startY + 'px';
 
   document.body.appendChild(el);
 
@@ -136,9 +137,10 @@ function createCharacter(userId, name, profileImage) {
     el,
     bubble,
     x: startX,
+    y: startY,
     targetX: startX,
+    targetY: startY,
     moving: false,
-    direction: 1,
     bubbleTimer: null,
   };
 
@@ -176,9 +178,9 @@ function startWandering(userId) {
       }
 
       const maxX = window.innerWidth - CHAR_WIDTH;
-      const newTarget = Math.random() * maxX;
-      char.targetX = newTarget;
-      char.direction = newTarget > char.x ? 1 : -1;
+      const maxY = window.innerHeight - CHAR_HEIGHT;
+      char.targetX = Math.random() * maxX;
+      char.targetY = Math.random() * maxY;
       char.moving = true;
 
       wander();
@@ -194,15 +196,20 @@ function animate() {
     if (!char.moving) continue;
 
     const dx = char.targetX - char.x;
-    if (Math.abs(dx) < SPEED) {
+    const dy = char.targetY - char.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < SPEED) {
       char.x = char.targetX;
+      char.y = char.targetY;
       char.moving = false;
     } else {
-      char.x += Math.sign(dx) * SPEED;
+      char.x += (dx / dist) * SPEED;
+      char.y += (dy / dist) * SPEED;
     }
 
     char.el.style.left = char.x + 'px';
-    char.el.style.transform = char.direction < 0 ? 'scaleX(-1)' : 'scaleX(1)';
+    char.el.style.top = char.y + 'px';
   }
 
   requestAnimationFrame(animate);
