@@ -64,9 +64,18 @@
 
   .character .name {
     margin-top: 2px;
-    font-size: 22px;
+    font-size: 28px;
+    font-weight: bold;
     color: #fff;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    text-shadow:
+      -2px -2px 0 #000,
+       2px -2px 0 #000,
+      -2px  2px 0 #000,
+       2px  2px 0 #000,
+       0   -2px 0 #000,
+       0    2px 0 #000,
+      -2px  0   0 #000,
+       2px  0   0 #000;
     text-align: center;
     max-width: 160px;
     overflow: hidden;
