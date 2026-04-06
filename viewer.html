@@ -53,6 +53,11 @@
     transform: translateX(-50%) scale(1);
   }
 
+  .character .bubble img {
+    height: 1.2em;
+    vertical-align: middle;
+  }
+
   .character .avatar {
     width: 112px;
     height: 112px;
@@ -107,6 +112,11 @@ function stripHtml(html) {
     .replace(/<[^>]+>/g, '');
 }
 
+function sanitizeHtml(html) {
+  // imgタグは保持（絵文字用）、それ以外のHTMLタグは除去
+  return html.replace(/<(?!img\s)[^>]+>/g, '');
+}
+
 function handleComment(comment) {
   const userId = comment.data.userId;
   const name = comment.data.nickname || comment.data.displayName || comment.data.name;
@@ -121,6 +131,8 @@ function handleComment(comment) {
 }
 
 function createCharacter(userId, name, profileImage) {
+  // 高解像度画像を取得（YouTube等のs32をs256に置換）
+  profileImage = profileImage.replace(/=s\d+/, '=s256');
   const el = document.createElement('div');
   el.className = 'character';
 
@@ -180,16 +192,17 @@ function updateAvatarSizes() {
   }
 }
 
-function showBubble(userId, text) {
+function showBubble(userId, rawHtml) {
   const char = characters[userId];
   if (!char) return;
 
   if (char.bubbleTimer) clearTimeout(char.bubbleTimer);
 
-  // フォントサイズ調整：3行以上になりそうなら縮小
+  // フォントサイズ調整：4行以上になりそうなら縮小
+  const plainText = stripHtml(rawHtml);
   const baseSize = 28;
-  const maxCharsPerLine = 12; // 1行あたりの目安文字数
-  const lines = Math.ceil(text.length / maxCharsPerLine);
+  const maxCharsPerLine = 12;
+  const lines = Math.ceil(plainText.length / maxCharsPerLine);
   if (lines > 4) {
     const scale = Math.max(0.5, 4 / lines);
     char.bubble.style.fontSize = Math.round(baseSize * scale) + 'px';
@@ -197,7 +210,7 @@ function showBubble(userId, text) {
     char.bubble.style.fontSize = baseSize + 'px';
   }
 
-  char.bubble.textContent = text;
+  char.bubble.innerHTML = sanitizeHtml(rawHtml);
   char.bubble.classList.add('visible');
 
   char.bubbleTimer = setTimeout(() => {
@@ -311,7 +324,7 @@ OneSDK.subscribe({
         seenCommentIds.add(commentId);
         characters[userId].commentCount++;
         totalComments++;
-        showBubble(userId, stripHtml(comment.data.comment));
+        showBubble(userId, comment.data.comment);
       }
     }
     updateAvatarSizes();
