@@ -22,6 +22,8 @@
   .character .bubble {
     position: absolute;
     bottom: 140px;
+    left: 50%;
+    transform: translateX(-50%) scale(0);
     background: rgba(255, 255, 255, 0.95);
     border-radius: 12px;
     padding: 16px 24px;
@@ -31,7 +33,6 @@
     max-width: 500px;
     word-wrap: break-word;
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    transform: scale(0);
     transform-origin: bottom center;
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     pointer-events: none;
@@ -49,7 +50,7 @@
     border-top: 8px solid rgba(255, 255, 255, 0.95);
   }
   .character .bubble.visible {
-    transform: scale(1);
+    transform: translateX(-50%) scale(1);
   }
 
   .character .avatar {
@@ -162,46 +163,25 @@ function showBubble(userId, text) {
 
   if (char.bubbleTimer) clearTimeout(char.bubbleTimer);
 
+  // フォントサイズ調整：3行以上になりそうなら縮小
+  const baseSize = 28;
+  const maxCharsPerLine = 12; // 1行あたりの目安文字数
+  const lines = Math.ceil(text.length / maxCharsPerLine);
+  if (lines > 2) {
+    const scale = Math.max(0.5, 2 / lines);
+    char.bubble.style.fontSize = Math.round(baseSize * scale) + 'px';
+  } else {
+    char.bubble.style.fontSize = baseSize + 'px';
+  }
+
   char.bubble.textContent = text;
   char.bubble.classList.add('visible');
-
-  // 吹き出しが画面外にはみ出さないよう位置調整
-  requestAnimationFrame(() => snapBubble(char));
 
   char.bubbleTimer = setTimeout(() => {
     char.bubble.classList.remove('visible');
     char.bubbleTimer = null;
   }, BUBBLE_DURATION);
 }
-
-function snapBubble(char) {
-  const bubble = char.bubble;
-  const charRect = char.el.getBoundingClientRect();
-  const bubbleWidth = bubble.offsetWidth;
-
-  // キャラ中央を基準に吹き出しを中央寄せ
-  const charCenterX = char.x + CHAR_WIDTH / 2;
-  let bubbleLeft = charCenterX - bubbleWidth / 2;
-
-  // 画面左右にスナップ
-  if (bubbleLeft < 0) bubbleLeft = 0;
-  if (bubbleLeft + bubbleWidth > window.innerWidth) {
-    bubbleLeft = window.innerWidth - bubbleWidth;
-  }
-
-  // キャラのleftからの相対位置に変換
-  bubble.style.left = (bubbleLeft - char.x) + 'px';
-
-  // 上にはみ出す場合はキャラの下に表示
-  const bubbleHeight = bubble.offsetHeight;
-  const bubbleTop = char.y - bubbleHeight - 10;
-  if (bubbleTop < 0) {
-    bubble.style.bottom = 'auto';
-    bubble.style.top = (CHAR_HEIGHT + 10) + 'px';
-  } else {
-    bubble.style.bottom = '140px';
-    bubble.style.top = 'auto';
-  }
 }
 
 function startWandering(userId) {
@@ -281,7 +261,6 @@ function animate() {
 
     char.el.style.left = char.x + 'px';
     char.el.style.top = char.y + 'px';
-    if (char.bubble.classList.contains('visible')) snapBubble(char);
   }
 
   requestAnimationFrame(animate);
