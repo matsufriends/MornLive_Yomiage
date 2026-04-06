@@ -90,7 +90,6 @@ const MOVE_INTERVAL_MAX = 6000;
 const SPEED = 1.5;
 const FLEE_SPEED = 4;
 const PERSONAL_SPACE = 200;
-const FLEE_DURATION = 2000;
 const MARGIN = 224; // アイコン2個分の余白
 const CHAR_WIDTH = 140;
 const CHAR_HEIGHT = 160;
@@ -237,7 +236,6 @@ function startWandering(userId) {
 
 function animate() {
   const ids = Object.keys(characters);
-  const now = Date.now();
 
   for (const userId of ids) {
     const char = characters[userId];
@@ -252,7 +250,7 @@ function animate() {
       const charRadius = (char.avatar.offsetWidth || BASE_AVATAR_SIZE) / 2;
       const otherRadius = (other.avatar.offsetWidth || BASE_AVATAR_SIZE) / 2;
       const gap = centerDist - charRadius - otherRadius;
-      if (gap < PERSONAL_SPACE && centerDist > 0 && (!char.fleeUntil || now > char.fleeUntil)
+      if (gap < PERSONAL_SPACE && centerDist > 0
           && char.commentCount <= other.commentCount) {
         // 反対方向に逃げ先を設定
         const fleeDistance = (PERSONAL_SPACE + charRadius + otherRadius) * 1.5;
@@ -261,7 +259,7 @@ function animate() {
         char.targetX = Math.max(MARGIN, Math.min(window.innerWidth - CHAR_WIDTH - MARGIN, awayX));
         char.targetY = Math.max(MARGIN, Math.min(window.innerHeight - CHAR_HEIGHT - MARGIN, awayY));
         char.moving = true;
-        char.fleeUntil = now + FLEE_DURATION;
+        char.fleeing = true;
         break;
       }
     }
@@ -275,13 +273,13 @@ function animate() {
     const dx = char.targetX - char.x;
     const dy = char.targetY - char.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const isFleeing = char.fleeUntil && now < char.fleeUntil;
-    const speed = isFleeing ? FLEE_SPEED : SPEED;
+    const speed = char.fleeing ? FLEE_SPEED : SPEED;
 
     if (dist < speed) {
       char.x = char.targetX;
       char.y = char.targetY;
       char.moving = false;
+      char.fleeing = false;
     } else {
       char.x += (dx / dist) * speed;
       char.y += (dy / dist) * speed;
