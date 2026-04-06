@@ -166,10 +166,38 @@ function showBubble(userId, text) {
   char.bubble.textContent = text;
   char.bubble.classList.add('visible');
 
+  // 吹き出しが画面外にはみ出さないよう位置調整
+  requestAnimationFrame(() => snapBubble(char));
+
   char.bubbleTimer = setTimeout(() => {
     char.bubble.classList.remove('visible');
     char.bubbleTimer = null;
   }, BUBBLE_DURATION);
+}
+
+function snapBubble(char) {
+  const bubble = char.bubble;
+  const rect = bubble.getBoundingClientRect();
+
+  // 左右のはみ出し補正（デフォルトはcenter配置）
+  let offsetX = 0;
+  if (rect.left < 0) {
+    offsetX = -rect.left;
+  } else if (rect.right > window.innerWidth) {
+    offsetX = window.innerWidth - rect.right;
+  }
+
+  // 上のはみ出し補正
+  let offsetY = 0;
+  if (rect.top < 0) {
+    offsetY = -rect.top;
+  }
+
+  if (offsetX !== 0 || offsetY !== 0) {
+    bubble.style.transform = `translateX(calc(-50% + ${offsetX}px)) scale(1) translateY(${offsetY}px)`;
+  } else {
+    bubble.style.transform = '';
+  }
 }
 
 function startWandering(userId) {
@@ -249,6 +277,7 @@ function animate() {
 
     char.el.style.left = char.x + 'px';
     char.el.style.top = char.y + 'px';
+    if (char.bubble.classList.contains('visible')) snapBubble(char);
   }
 
   requestAnimationFrame(animate);
