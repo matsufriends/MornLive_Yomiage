@@ -61,7 +61,6 @@
     border: 3px solid #fff;
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     object-fit: cover;
-    image-rendering: auto;
   }
 
   .character .name {
@@ -78,8 +77,8 @@
 </style>
 </head>
 <body>
+<script src="http://localhost:11180/templates/preset/__origin/js/onesdk.js"></script>
 <script>
-const ONECOMME_URL = 'ws://127.0.0.1:11180/sub';
 const BUBBLE_DURATION = 6000;
 const MOVE_INTERVAL_MIN = 2000;
 const MOVE_INTERVAL_MAX = 6000;
@@ -87,37 +86,6 @@ const SPEED = 1.5;
 const CHAR_WIDTH = 90;
 
 const characters = {};
-
-function connect() {
-  const ws = new WebSocket(ONECOMME_URL);
-
-  ws.onopen = () => {
-    console.log('[viewer] Connected to onecomme');
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'comments') {
-        for (const comment of msg.data) {
-          handleComment(comment);
-        }
-      }
-    } catch (e) {
-      console.error('[viewer] Parse error:', e);
-    }
-  };
-
-  ws.onclose = () => {
-    console.log('[viewer] Disconnected, reconnecting in 3s...');
-    setTimeout(connect, 3000);
-  };
-
-  ws.onerror = (e) => {
-    console.error('[viewer] WebSocket error:', e);
-    ws.close();
-  };
-}
 
 function stripHtml(html) {
   return html
@@ -201,7 +169,6 @@ function startWandering(userId) {
     setTimeout(() => {
       if (!characters[userId]) return;
 
-      // 50%の確率で止まる、50%で動く
       if (Math.random() < 0.5) {
         wander();
         return;
@@ -220,7 +187,6 @@ function startWandering(userId) {
   wander();
 }
 
-// アニメーションループ
 function animate() {
   for (const userId in characters) {
     const char = characters[userId];
@@ -235,15 +201,25 @@ function animate() {
     }
 
     char.el.style.left = char.x + 'px';
-    // 移動方向に応じて反転
     char.el.style.transform = char.direction < 0 ? 'scaleX(-1)' : 'scaleX(1)';
   }
 
   requestAnimationFrame(animate);
 }
 
+// OneSDKで接続
+OneSDK.setup({ mode: 'diff' });
+OneSDK.subscribe({
+  action: 'comments',
+  callback: (comments) => {
+    for (const comment of comments) {
+      handleComment(comment);
+    }
+  }
+});
+OneSDK.connect();
+
 animate();
-connect();
 </script>
 </body>
 </html>
