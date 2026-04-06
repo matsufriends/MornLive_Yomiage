@@ -94,6 +94,8 @@ const MOVE_INTERVAL_MIN = 2000;
 const MOVE_INTERVAL_MAX = 6000;
 const SPEED = 1.5;
 const FLEE_SPEED = 4;
+const EXCITED_SPEED = 8;
+const EXCITED_MS_PER_CHAR = 200; // 1文字あたりの興奮時間
 const PERSONAL_SPACE = 100;
 const MARGIN = 112; // アイコン1個分の余白
 const CHAR_WIDTH = 140;
@@ -198,8 +200,13 @@ function showBubble(userId, rawHtml) {
 
   if (char.bubbleTimer) clearTimeout(char.bubbleTimer);
 
-  // フォントサイズ調整：4行以上になりそうなら縮小
   const plainText = stripHtml(rawHtml);
+
+  // コメントしたら興奮状態：文字数に応じて超高速で走り回る
+  const excitedDuration = Math.max(1000, plainText.length * EXCITED_MS_PER_CHAR);
+  char.excitedUntil = Date.now() + excitedDuration;
+
+  // フォントサイズ調整：4行以上になりそうなら縮小
   const baseSize = 28;
   const maxCharsPerLine = 12;
   const lines = Math.ceil(plainText.length / maxCharsPerLine);
@@ -314,6 +321,17 @@ function animate() {
       }
     }
 
+    const isExcited = char.excitedUntil && Date.now() < char.excitedUntil;
+
+    // 興奮中は常に走り回る
+    if (isExcited && !char.moving) {
+      const maxX = window.innerWidth - CHAR_WIDTH - MARGIN;
+      const maxY = window.innerHeight - CHAR_HEIGHT - MARGIN;
+      char.targetX = MARGIN + Math.random() * (maxX - MARGIN);
+      char.targetY = MARGIN + Math.random() * (maxY - MARGIN);
+      char.moving = true;
+    }
+
     if (!char.moving) {
       char.el.style.left = char.x + 'px';
       char.el.style.top = char.y + 'px';
@@ -323,7 +341,7 @@ function animate() {
     const dx = char.targetX - char.x;
     const dy = char.targetY - char.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const speed = char.fleeing ? FLEE_SPEED : SPEED;
+    const speed = isExcited ? EXCITED_SPEED : (char.fleeing ? FLEE_SPEED : SPEED);
 
     if (dist < speed) {
       char.x = char.targetX;
