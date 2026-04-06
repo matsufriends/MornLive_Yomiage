@@ -95,7 +95,11 @@ const MARGIN = 224; // アイコン2個分の余白
 const CHAR_WIDTH = 140;
 const CHAR_HEIGHT = 160;
 
+const BASE_AVATAR_SIZE = 112;
+const MAX_AVATAR_SCALE = 3;
+
 const characters = {};
+let totalComments = 0;
 
 function stripHtml(html) {
   return html
@@ -148,15 +152,30 @@ function createCharacter(userId, name, profileImage) {
   characters[userId] = {
     el,
     bubble,
+    avatar,
     x: startX,
     y: startY,
     targetX: startX,
     targetY: startY,
     moving: false,
     bubbleTimer: null,
+    commentCount: 0,
   };
 
   startWandering(userId);
+}
+
+function updateAvatarSizes() {
+  if (totalComments === 0) return;
+  for (const userId in characters) {
+    const char = characters[userId];
+    const ratio = char.commentCount / totalComments;
+    // 1倍 〜 MAX_AVATAR_SCALE倍にスケール
+    const scale = 1 + ratio * (MAX_AVATAR_SCALE - 1);
+    const size = Math.round(BASE_AVATAR_SIZE * scale);
+    char.avatar.style.width = size + 'px';
+    char.avatar.style.height = size + 'px';
+  }
 }
 
 function showBubble(userId, text) {
@@ -281,12 +300,15 @@ OneSDK.subscribe({
       if (!characters[userId]) {
         createCharacter(userId, name, profileImage);
       }
-      // 未処理のコメントだけ吹き出しを表示
+      // 未処理のコメントだけカウント＆吹き出し表示
       if (!seenCommentIds.has(commentId)) {
         seenCommentIds.add(commentId);
+        characters[userId].commentCount++;
+        totalComments++;
         showBubble(userId, stripHtml(comment.data.comment));
       }
     }
+    updateAvatarSizes();
   }
 });
 OneSDK.connect();
