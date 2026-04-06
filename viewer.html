@@ -91,6 +91,7 @@ const MOVE_INTERVAL_MAX = 6000;
 const SPEED = 1.5;
 const FLEE_SPEED = 4;
 const PERSONAL_SPACE = 200;
+const FLEE_DURATION = 2000;
 const CHAR_WIDTH = 140;
 const CHAR_HEIGHT = 160;
 
@@ -201,45 +202,49 @@ function startWandering(userId) {
 
 function animate() {
   const ids = Object.keys(characters);
+  const now = Date.now();
 
   for (const userId of ids) {
     const char = characters[userId];
 
-    // 他キャラとの距離チェック → 近すぎたら逃げる
-    let fleeX = 0, fleeY = 0;
+    // 他キャラとの距離チェック → 近すぎたら逃げ先を決めて一定時間早足モードに
     for (const otherId of ids) {
       if (otherId === userId) continue;
       const other = characters[otherId];
       const dx = char.x - other.x;
       const dy = char.y - other.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < PERSONAL_SPACE && dist > 0) {
-        const force = (PERSONAL_SPACE - dist) / PERSONAL_SPACE;
-        fleeX += (dx / dist) * force;
-        fleeY += (dy / dist) * force;
+      if (dist < PERSONAL_SPACE && dist > 0 && (!char.fleeUntil || now > char.fleeUntil)) {
+        // 反対方向に逃げ先を設定
+        const awayX = char.x + (dx / dist) * PERSONAL_SPACE * 1.5;
+        const awayY = char.y + (dy / dist) * PERSONAL_SPACE * 1.5;
+        char.targetX = Math.max(0, Math.min(window.innerWidth - CHAR_WIDTH, awayX));
+        char.targetY = Math.max(0, Math.min(window.innerHeight - CHAR_HEIGHT, awayY));
+        char.moving = true;
+        char.fleeUntil = now + FLEE_DURATION;
+        break;
       }
     }
 
-    if (fleeX !== 0 || fleeY !== 0) {
-      const fleeDist = Math.sqrt(fleeX * fleeX + fleeY * fleeY);
-      char.x += (fleeX / fleeDist) * FLEE_SPEED;
-      char.y += (fleeY / fleeDist) * FLEE_SPEED;
-      // 画面外に出ないように
-      char.x = Math.max(0, Math.min(window.innerWidth - CHAR_WIDTH, char.x));
-      char.y = Math.max(0, Math.min(window.innerHeight - CHAR_HEIGHT, char.y));
-    } else if (char.moving) {
-      const dx = char.targetX - char.x;
-      const dy = char.targetY - char.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+    if (!char.moving) {
+      char.el.style.left = char.x + 'px';
+      char.el.style.top = char.y + 'px';
+      continue;
+    }
 
-      if (dist < SPEED) {
-        char.x = char.targetX;
-        char.y = char.targetY;
-        char.moving = false;
-      } else {
-        char.x += (dx / dist) * SPEED;
-        char.y += (dy / dist) * SPEED;
-      }
+    const dx = char.targetX - char.x;
+    const dy = char.targetY - char.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const isFleeing = char.fleeUntil && now < char.fleeUntil;
+    const speed = isFleeing ? FLEE_SPEED : SPEED;
+
+    if (dist < speed) {
+      char.x = char.targetX;
+      char.y = char.targetY;
+      char.moving = false;
+    } else {
+      char.x += (dx / dist) * speed;
+      char.y += (dy / dist) * speed;
     }
 
     char.el.style.left = char.x + 'px';
