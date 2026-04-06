@@ -96,7 +96,8 @@ const CHAR_WIDTH = 140;
 const CHAR_HEIGHT = 160;
 
 const BASE_AVATAR_SIZE = 112;
-const MAX_AVATAR_SCALE = 3;
+const MIN_AVATAR_SCALE = 0.5;
+const MAX_AVATAR_SCALE = 2;
 
 const characters = {};
 let totalComments = 0;
@@ -170,11 +171,13 @@ function updateAvatarSizes() {
   for (const userId in characters) {
     const char = characters[userId];
     const ratio = char.commentCount / totalComments;
-    // 1倍 〜 MAX_AVATAR_SCALE倍にスケール
-    const scale = 1 + ratio * (MAX_AVATAR_SCALE - 1);
+    // MIN_AVATAR_SCALE 〜 MAX_AVATAR_SCALE にスケール
+    const scale = MIN_AVATAR_SCALE + ratio * (MAX_AVATAR_SCALE - MIN_AVATAR_SCALE);
     const size = Math.round(BASE_AVATAR_SIZE * scale);
     char.avatar.style.width = size + 'px';
     char.avatar.style.height = size + 'px';
+    // 吹き出し位置をアバターサイズに合わせる
+    char.bubble.style.bottom = (size + 30) + 'px';
   }
 }
 
