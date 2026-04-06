@@ -89,16 +89,17 @@
 <script src="http://localhost:11180/templates/preset/__origin/js/onesdk.js"></script>
 <script>
 const BUBBLE_DURATION = 10000;
-const MOVE_INTERVAL_MIN = 2000;
-const MOVE_INTERVAL_MAX = 6000;
-const SPEED = 1.5;
-const FLEE_SPEED = 4;
-const EXCITED_SPEED = 5;
-const EXCITED_MS_PER_CHAR = 150; // 1文字あたりの興奮時間（ずんだもん読み上げに合わせる）
-const PERSONAL_SPACE = 100;
-const MARGIN = 112; // アイコン1個分の余白
+const WANDER_FORCE = 0.3;
+const WANDER_INTERVAL_MIN = 2000;
+const WANDER_INTERVAL_MAX = 6000;
+const FRICTION = 0.98;
+const WALL_BOUNCE = 0.7;
+const EXCITED_FORCE = 5;
+const EXCITED_MS_PER_CHAR = 150;
+const MARGIN = 112;
 const CHAR_WIDTH = 140;
 const CHAR_HEIGHT = 160;
+const BASE_MASS = 1;
 
 const BASE_AVATAR_SIZE = 112;
 const MIN_AVATAR_SCALE = 0.5;
@@ -176,9 +177,8 @@ function createCharacter(userId, name, profileImage) {
     avatar,
     x: startX,
     y: startY,
-    targetX: startX,
-    targetY: startY,
-    moving: false,
+    vx: 0,
+    vy: 0,
     bubbleTimer: null,
     commentCount: 0,
   };
@@ -214,7 +214,7 @@ function showBubble(userId, rawHtml) {
 
   // 興奮状態：吹き出しが消えるまで走り回る、文字数が多いほど速い
   char.excitedUntil = Date.now() + bubbleDuration;
-  char.excitedSpeed = EXCITED_SPEED + Math.pow(charCount, 2) * 0.01;
+  char.excitedSpeed = EXCITED_FORCE + Math.pow(charCount, 2) * 0.01;
 
   // フォントサイズ調整：4行以上になりそうなら縮小
   const baseSize = 28;
@@ -241,21 +241,17 @@ function startWandering(userId) {
     const char = characters[userId];
     if (!char) return;
 
-    const delay = MOVE_INTERVAL_MIN + Math.random() * (MOVE_INTERVAL_MAX - MOVE_INTERVAL_MIN);
+    const delay = WANDER_INTERVAL_MIN + Math.random() * (WANDER_INTERVAL_MAX - WANDER_INTERVAL_MIN);
 
     setTimeout(() => {
       if (!characters[userId]) return;
 
       if (Math.random() < 0.5) {
-        wander();
-        return;
+        // ランダムな方向に軽く力を加える
+        const angle = Math.random() * Math.PI * 2;
+        char.vx += Math.cos(angle) * WANDER_FORCE;
+        char.vy += Math.sin(angle) * WANDER_FORCE;
       }
-
-      const maxX = window.innerWidth - CHAR_WIDTH - MARGIN;
-      const maxY = window.innerHeight - CHAR_HEIGHT - MARGIN;
-      char.targetX = MARGIN + Math.random() * (maxX - MARGIN);
-      char.targetY = MARGIN + Math.random() * (maxY - MARGIN);
-      char.moving = true;
 
       wander();
     }, delay);
@@ -264,104 +260,91 @@ function startWandering(userId) {
   wander();
 }
 
+function getMass(char) {
+  return BASE_MASS + char.commentCount * 0.5;
+}
+
 function animate() {
   const ids = Object.keys(characters);
 
+  // 興奮中のキャラにランダムな力を加え続ける
+  const now = Date.now();
+  for (const userId of ids) {
+    const char = characters[userId];
+    if (char.excitedUntil && now < char.excitedUntil) {
+      const angle = Math.random() * Math.PI * 2;
+      const force = (char.excitedSpeed || EXCITED_FORCE) * 0.3;
+      char.vx += Math.cos(angle) * force;
+      char.vy += Math.sin(angle) * force;
+    }
+  }
+
+  // 衝突判定 & 運動量交換
+  for (let i = 0; i < ids.length; i++) {
+    const a = characters[ids[i]];
+    const aRadius = (a.avatar.offsetWidth || BASE_AVATAR_SIZE) / 2;
+    const aMass = getMass(a);
+    for (let j = i + 1; j < ids.length; j++) {
+      const b = characters[ids[j]];
+      const bRadius = (b.avatar.offsetWidth || BASE_AVATAR_SIZE) / 2;
+      const bMass = getMass(b);
+
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minDist = aRadius + bRadius;
+
+      if (dist < minDist && dist > 0) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+
+        // 重なり解消
+        const overlap = minDist - dist;
+        const totalMass = aMass + bMass;
+        a.x -= nx * overlap * (bMass / totalMass);
+        a.y -= ny * overlap * (bMass / totalMass);
+        b.x += nx * overlap * (aMass / totalMass);
+        b.y += ny * overlap * (aMass / totalMass);
+
+        // 相対速度の法線成分
+        const dvx = a.vx - b.vx;
+        const dvy = a.vy - b.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+
+        // 離れていく方向なら衝突処理不要
+        if (dvDotN > 0) {
+          const impulse = (2 * dvDotN) / totalMass;
+          a.vx -= impulse * bMass * nx;
+          a.vy -= impulse * bMass * ny;
+          b.vx += impulse * aMass * nx;
+          b.vy += impulse * aMass * ny;
+        }
+      }
+    }
+  }
+
+  // 位置更新 & 壁バウンス
   for (const userId of ids) {
     const char = characters[userId];
 
-    // 全脅威を合算して最適な逃げ方向を決定
-    const charRadius = (char.avatar.offsetWidth || BASE_AVATAR_SIZE) / 2;
-    let fleeX = 0, fleeY = 0;
-    let threatened = false;
-    for (const otherId of ids) {
-      if (otherId === userId) continue;
-      const other = characters[otherId];
-      const dx = char.x - other.x;
-      const dy = char.y - other.y;
-      const centerDist = Math.sqrt(dx * dx + dy * dy);
-      if (centerDist === 0) continue;
-      const otherRadius = (other.avatar.offsetWidth || BASE_AVATAR_SIZE) / 2;
-      const gap = centerDist - charRadius - otherRadius;
-      if (gap < PERSONAL_SPACE && char.commentCount <= other.commentCount) {
-        // 近いほど強い反発力
-        const force = (PERSONAL_SPACE - gap) / PERSONAL_SPACE;
-        fleeX += (dx / centerDist) * force;
-        fleeY += (dy / centerDist) * force;
-        threatened = true;
-      }
-    }
-    if (threatened) {
-      // 壁からの反発も加味
-      const wallForce = 0.5;
-      if (char.x < MARGIN + charRadius) fleeX += wallForce;
-      if (char.x > window.innerWidth - CHAR_WIDTH - MARGIN - charRadius) fleeX -= wallForce;
-      if (char.y < MARGIN + charRadius) fleeY += wallForce;
-      if (char.y > window.innerHeight - CHAR_HEIGHT - MARGIN - charRadius) fleeY -= wallForce;
+    // 摩擦
+    char.vx *= FRICTION;
+    char.vy *= FRICTION;
 
-      const fleeMag = Math.sqrt(fleeX * fleeX + fleeY * fleeY);
-      if (fleeMag > 0) {
-        const fleeDistance = (PERSONAL_SPACE + charRadius) * 1.5;
-        const awayX = char.x + (fleeX / fleeMag) * fleeDistance;
-        const awayY = char.y + (fleeY / fleeMag) * fleeDistance;
-        char.targetX = Math.max(MARGIN, Math.min(window.innerWidth - CHAR_WIDTH - MARGIN, awayX));
-        char.targetY = Math.max(MARGIN, Math.min(window.innerHeight - CHAR_HEIGHT - MARGIN, awayY));
-        char.moving = true;
-        char.fleeing = true;
-      }
-    }
+    // 位置更新
+    char.x += char.vx;
+    char.y += char.vy;
 
-    // 重なり防止: アバター同士が重なったら即座に押し出す
-    for (const otherId of ids) {
-      if (otherId === userId) continue;
-      const other = characters[otherId];
-      const dx = char.x - other.x;
-      const dy = char.y - other.y;
-      const centerDist = Math.sqrt(dx * dx + dy * dy);
-      if (centerDist === 0) continue;
-      const otherRadius = (other.avatar.offsetWidth || BASE_AVATAR_SIZE) / 2;
-      const overlap = charRadius + otherRadius - centerDist;
-      if (overlap > 0) {
-        const pushX = (dx / centerDist) * overlap * 0.5;
-        const pushY = (dy / centerDist) * overlap * 0.5;
-        char.x += pushX;
-        char.y += pushY;
-        other.x -= pushX;
-        other.y -= pushY;
-      }
-    }
+    // 壁バウンス
+    const minX = MARGIN;
+    const maxX = window.innerWidth - CHAR_WIDTH - MARGIN;
+    const minY = MARGIN;
+    const maxY = window.innerHeight - CHAR_HEIGHT - MARGIN;
 
-    const isExcited = char.excitedUntil && Date.now() < char.excitedUntil;
-
-    // 興奮中は常に走り回る
-    if (isExcited && !char.moving) {
-      const maxX = window.innerWidth - CHAR_WIDTH - MARGIN;
-      const maxY = window.innerHeight - CHAR_HEIGHT - MARGIN;
-      char.targetX = MARGIN + Math.random() * (maxX - MARGIN);
-      char.targetY = MARGIN + Math.random() * (maxY - MARGIN);
-      char.moving = true;
-    }
-
-    if (!char.moving) {
-      char.el.style.left = char.x + 'px';
-      char.el.style.top = char.y + 'px';
-      continue;
-    }
-
-    const dx = char.targetX - char.x;
-    const dy = char.targetY - char.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const speed = isExcited ? (char.excitedSpeed || EXCITED_SPEED) : (char.fleeing ? FLEE_SPEED : SPEED);
-
-    if (dist < speed) {
-      char.x = char.targetX;
-      char.y = char.targetY;
-      char.moving = false;
-      char.fleeing = false;
-    } else {
-      char.x += (dx / dist) * speed;
-      char.y += (dy / dist) * speed;
-    }
+    if (char.x < minX) { char.x = minX; char.vx = Math.abs(char.vx) * WALL_BOUNCE; }
+    if (char.x > maxX) { char.x = maxX; char.vx = -Math.abs(char.vx) * WALL_BOUNCE; }
+    if (char.y < minY) { char.y = minY; char.vy = Math.abs(char.vy) * WALL_BOUNCE; }
+    if (char.y > maxY) { char.y = maxY; char.vy = -Math.abs(char.vy) * WALL_BOUNCE; }
 
     char.el.style.left = char.x + 'px';
     char.el.style.top = char.y + 'px';
