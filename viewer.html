@@ -132,15 +132,20 @@ function handleComment(comment) {
   const name = comment.data.nickname || comment.data.displayName || comment.data.name;
   const profileImage = comment.data.profileImage;
   const text = stripHtml(comment.data.comment);
+  const allNames = [
+    comment.data.nickname,
+    comment.data.displayName,
+    comment.data.name,
+  ].filter(Boolean);
 
   if (!characters[userId]) {
-    createCharacter(userId, name, profileImage);
+    createCharacter(userId, name, profileImage, allNames);
   }
 
   showBubble(userId, text);
 }
 
-function createCharacter(userId, name, profileImage) {
+function createCharacter(userId, name, profileImage, allNames) {
   // 高解像度画像を取得（YouTube等のs32をs256に置換）
   profileImage = profileImage.replace(/=s\d+/, '=s256');
   const el = document.createElement('div');
@@ -181,6 +186,7 @@ function createCharacter(userId, name, profileImage) {
     vy: 0,
     bubbleTimer: null,
     commentCount: 0,
+    names: allNames || [],
   };
 
   startWandering(userId);
@@ -222,8 +228,8 @@ function showBubble(userId, rawHtml) {
   for (const otherId in characters) {
     if (otherId === userId) continue;
     const other = characters[otherId];
-    const otherName = other.el.querySelector('.name').textContent;
-    if (otherName && plainText.includes(otherName)) {
+    const matched = other.names.some(n => plainText.includes(n));
+    if (matched) {
       targets.push(otherId);
     }
   }
@@ -395,8 +401,13 @@ OneSDK.subscribe({
       const userId = comment.data.userId;
       const name = comment.data.nickname || comment.data.displayName || comment.data.name;
       const profileImage = comment.data.profileImage;
+      const allNames = [
+        comment.data.nickname,
+        comment.data.displayName,
+        comment.data.name,
+      ].filter(Boolean);
       if (!characters[userId]) {
-        createCharacter(userId, name, profileImage);
+        createCharacter(userId, name, profileImage, allNames);
       }
       // 未処理のコメントだけカウント＆吹き出し表示
       if (!seenCommentIds.has(commentId)) {
