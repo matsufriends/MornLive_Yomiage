@@ -89,6 +89,8 @@ const BUBBLE_DURATION = 10000;
 const MOVE_INTERVAL_MIN = 2000;
 const MOVE_INTERVAL_MAX = 6000;
 const SPEED = 1.5;
+const FLEE_SPEED = 4;
+const PERSONAL_SPACE = 200;
 const CHAR_WIDTH = 140;
 const CHAR_HEIGHT = 160;
 
@@ -198,21 +200,46 @@ function startWandering(userId) {
 }
 
 function animate() {
-  for (const userId in characters) {
+  const ids = Object.keys(characters);
+
+  for (const userId of ids) {
     const char = characters[userId];
-    if (!char.moving) continue;
 
-    const dx = char.targetX - char.x;
-    const dy = char.targetY - char.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    // 他キャラとの距離チェック → 近すぎたら逃げる
+    let fleeX = 0, fleeY = 0;
+    for (const otherId of ids) {
+      if (otherId === userId) continue;
+      const other = characters[otherId];
+      const dx = char.x - other.x;
+      const dy = char.y - other.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < PERSONAL_SPACE && dist > 0) {
+        const force = (PERSONAL_SPACE - dist) / PERSONAL_SPACE;
+        fleeX += (dx / dist) * force;
+        fleeY += (dy / dist) * force;
+      }
+    }
 
-    if (dist < SPEED) {
-      char.x = char.targetX;
-      char.y = char.targetY;
-      char.moving = false;
-    } else {
-      char.x += (dx / dist) * SPEED;
-      char.y += (dy / dist) * SPEED;
+    if (fleeX !== 0 || fleeY !== 0) {
+      const fleeDist = Math.sqrt(fleeX * fleeX + fleeY * fleeY);
+      char.x += (fleeX / fleeDist) * FLEE_SPEED;
+      char.y += (fleeY / fleeDist) * FLEE_SPEED;
+      // 画面外に出ないように
+      char.x = Math.max(0, Math.min(window.innerWidth - CHAR_WIDTH, char.x));
+      char.y = Math.max(0, Math.min(window.innerHeight - CHAR_HEIGHT, char.y));
+    } else if (char.moving) {
+      const dx = char.targetX - char.x;
+      const dy = char.targetY - char.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < SPEED) {
+        char.x = char.targetX;
+        char.y = char.targetY;
+        char.moving = false;
+      } else {
+        char.x += (dx / dist) * SPEED;
+        char.y += (dy / dist) * SPEED;
+      }
     }
 
     char.el.style.left = char.x + 'px';
