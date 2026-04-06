@@ -246,7 +246,8 @@ function animate() {
       const dx = char.x - other.x;
       const dy = char.y - other.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < PERSONAL_SPACE && dist > 0 && (!char.fleeUntil || now > char.fleeUntil)) {
+      if (dist < PERSONAL_SPACE && dist > 0 && (!char.fleeUntil || now > char.fleeUntil)
+          && char.commentCount <= other.commentCount) {
         // 反対方向に逃げ先を設定
         const awayX = char.x + (dx / dist) * PERSONAL_SPACE * 1.5;
         const awayY = char.y + (dy / dist) * PERSONAL_SPACE * 1.5;
