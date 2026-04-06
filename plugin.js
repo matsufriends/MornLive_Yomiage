@@ -47,7 +47,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '3.5.0',
+  version: '3.6.0',
   author: 'matsufriends',
   permissions: ['filter.comment'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
@@ -79,7 +79,10 @@ const plugin = {
   destroy() {},
 
   filterComment(comment) {
+    // HTMLタグを除去（imgはalt属性の値に変換）してからパターンマッチ
     const text = comment.data.comment
+      .replace(/<img[^>]*alt="([^"]*)"[^>]*>/g, '$1')
+      .replace(/<[^>]+>/g, '')
     const match = text.match(KYOUIKU_PATTERN)
 
     if (match) {
