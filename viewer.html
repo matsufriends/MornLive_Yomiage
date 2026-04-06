@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Comment Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  .character {
+    position: absolute;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.1s;
+  }
+
+  .character .bubble {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    padding: 8px 14px;
+    font-size: 14px;
+    line-height: 1.4;
+    max-width: 220px;
+    word-wrap: break-word;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    white-space: pre-wrap;
+  }
+  .character .bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 8px solid rgba(255, 255, 255, 0.95);
+  }
+  .character .bubble.visible {
+    opacity: 1;
+  }
+
+  .character .avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    object-fit: cover;
+    image-rendering: auto;
+  }
+
+  .character .name {
+    margin-top: 2px;
+    font-size: 11px;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    text-align: center;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<script>
+const ONECOMME_URL = 'ws://127.0.0.1:11180/sub';
+const BUBBLE_DURATION = 6000;
+const MOVE_INTERVAL_MIN = 2000;
+const MOVE_INTERVAL_MAX = 6000;
+const SPEED = 1.5;
+const CHAR_WIDTH = 90;
+
+const characters = {};
+
+function connect() {
+  const ws = new WebSocket(ONECOMME_URL);
+
+  ws.onopen = () => {
+    console.log('[viewer] Connected to onecomme');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'comments') {
+        for (const comment of msg.data) {
+          handleComment(comment);
+        }
+      }
+    } catch (e) {
+      console.error('[viewer] Parse error:', e);
+    }
+  };
+
+  ws.onclose = () => {
+    console.log('[viewer] Disconnected, reconnecting in 3s...');
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = (e) => {
+    console.error('[viewer] WebSocket error:', e);
+    ws.close();
+  };
+}
+
+function stripHtml(html) {
+  return html
+    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/g, '$1')
+    .replace(/<[^>]+>/g, '');
+}
+
+function handleComment(comment) {
+  const userId = comment.data.userId;
+  const name = comment.data.nickname || comment.data.displayName || comment.data.name;
+  const profileImage = comment.data.profileImage;
+  const text = stripHtml(comment.data.comment);
+
+  if (!characters[userId]) {
+    createCharacter(userId, name, profileImage);
+  }
+
+  showBubble(userId, text);
+}
+
+function createCharacter(userId, name, profileImage) {
+  const el = document.createElement('div');
+  el.className = 'character';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  el.appendChild(bubble);
+
+  const avatar = document.createElement('img');
+  avatar.className = 'avatar';
+  avatar.src = profileImage;
+  avatar.alt = name;
+  avatar.crossOrigin = 'anonymous';
+  el.appendChild(avatar);
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'name';
+  nameEl.textContent = name;
+  el.appendChild(nameEl);
+
+  const startX = Math.random() * (window.innerWidth - CHAR_WIDTH);
+  el.style.left = startX + 'px';
+
+  document.body.appendChild(el);
+
+  characters[userId] = {
+    el,
+    bubble,
+    x: startX,
+    targetX: startX,
+    moving: false,
+    direction: 1,
+    bubbleTimer: null,
+  };
+
+  startWandering(userId);
+}
+
+function showBubble(userId, text) {
+  const char = characters[userId];
+  if (!char) return;
+
+  if (char.bubbleTimer) clearTimeout(char.bubbleTimer);
+
+  char.bubble.textContent = text;
+  char.bubble.classList.add('visible');
+
+  char.bubbleTimer = setTimeout(() => {
+    char.bubble.classList.remove('visible');
+    char.bubbleTimer = null;
+  }, BUBBLE_DURATION);
+}
+
+function startWandering(userId) {
+  const wander = () => {
+    const char = characters[userId];
+    if (!char) return;
+
+    const delay = MOVE_INTERVAL_MIN + Math.random() * (MOVE_INTERVAL_MAX - MOVE_INTERVAL_MIN);
+
+    setTimeout(() => {
+      if (!characters[userId]) return;
+
+      // 50%の確率で止まる、50%で動く
+      if (Math.random() < 0.5) {
+        wander();
+        return;
+      }
+
+      const maxX = window.innerWidth - CHAR_WIDTH;
+      const newTarget = Math.random() * maxX;
+      char.targetX = newTarget;
+      char.direction = newTarget > char.x ? 1 : -1;
+      char.moving = true;
+
+      wander();
+    }, delay);
+  };
+
+  wander();
+}
+
+// アニメーションループ
+function animate() {
+  for (const userId in characters) {
+    const char = characters[userId];
+    if (!char.moving) continue;
+
+    const dx = char.targetX - char.x;
+    if (Math.abs(dx) < SPEED) {
+      char.x = char.targetX;
+      char.moving = false;
+    } else {
+      char.x += Math.sign(dx) * SPEED;
+    }
+
+    char.el.style.left = char.x + 'px';
+    // 移動方向に応じて反転
+    char.el.style.transform = char.direction < 0 ? 'scaleX(-1)' : 'scaleX(1)';
+  }
+
+  requestAnimationFrame(animate);
+}
+
+animate();
+connect();
+</script>
+</body>
+</html>
