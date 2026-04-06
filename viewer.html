@@ -94,8 +94,8 @@ const MOVE_INTERVAL_MIN = 2000;
 const MOVE_INTERVAL_MAX = 6000;
 const SPEED = 1.5;
 const FLEE_SPEED = 4;
-const EXCITED_SPEED = 15;
-const EXCITED_MS_PER_CHAR = 500; // 1文字あたりの興奮時間
+const EXCITED_SPEED = 10;
+const EXCITED_MS_PER_CHAR = 150; // 1文字あたりの興奮時間
 const PERSONAL_SPACE = 100;
 const MARGIN = 112; // アイコン1個分の余白
 const CHAR_WIDTH = 140;
@@ -207,7 +207,7 @@ function showBubble(userId, rawHtml) {
 
   // 興奮状態：吹き出しが消えるまで走り回る、文字数が多いほど速い
   char.excitedUntil = Date.now() + bubbleDuration;
-  char.excitedSpeed = EXCITED_SPEED + plainText.length * 0.5;
+  char.excitedSpeed = EXCITED_SPEED + plainText.length * 0.15;
 
   // フォントサイズ調整：4行以上になりそうなら縮小
   const baseSize = 28;
