@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Reaction Overlay</title>
+<style>
+  * { margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+// --- 設定 ---
+const ONECOMME_PORT = 11180
+const PLUGIN_UID = 'com.matsufriends.yomiage-dictionary'
+const POLL_INTERVAL_MS = 500
+
+// クラッカー演出設定
+const EMOJI_SIZE_MIN = 80
+const EMOJI_SIZE_MAX = 144
+const PARTICLE_LIFETIME_MS = 3000    // パーティクル寿命
+const GRAVITY = 1200                 // 重力加速度 (px/s²)
+const LAUNCH_SPEED_MIN = 1000       // 射出速度の最小値
+const LAUNCH_SPEED_MAX = 1800       // 射出速度の最大値
+const SPREAD_ANGLE = 80             // 扇の広がり角度 (度)
+const SPIN_SPEED = 150              // 回転速度 (度/s)
+const PARTICLES_PER_EMOJI = 10      // 1リアクションあたりの射出数（派手に）
+const PARTICLE_INTERVAL_MS = 200    // パーティクル間の射出インターバル(ms)
+const MAX_PARTICLES = 500           // パーティクル上限（パフォーマンス保護）
+
+const API_URL = `http://localhost:${ONECOMME_PORT}/api/plugins/${PLUGIN_UID}`
+const FONT_FAMILY = "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji'"
+
+// --- Canvas セットアップ ---
+const canvas = document.getElementById('canvas')
+const ctx = canvas.getContext('2d')
+
+function resize() {
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
+}
+resize()
+window.addEventListener('resize', resize)
+
+// --- 絵文字キャッシュ（最大の最適化ポイント） ---
+// fillText は毎フレーム呼ぶと非常に重い → オフスクリーン Canvas にキャッシュして drawImage で描画
+const emojiCache = new Map()
+
+function getEmojiImage(emoji, size) {
+  const key = emoji + '|' + size
+  if (emojiCache.has(key)) return emojiCache.get(key)
+
+  const padding = Math.ceil(size * 0.15)
+  const canvasSize = size + padding * 2
+
+  if (emoji.startsWith('img:')) {
+    // カスタム絵文字（画像URL）
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    const entry = { canvas: null, half: canvasSize / 2, img, ready: false }
+    img.onload = () => {
+      const offscreen = document.createElement('canvas')
+      offscreen.width = canvasSize
+      offscreen.height = canvasSize
+      const offCtx = offscreen.getContext('2d')
+      offCtx.drawImage(img, padding, padding, size, size)
+      entry.canvas = offscreen
+      entry.ready = true
+    }
+    img.src = emoji.slice(4) // 'img:' を除去
+    emojiCache.set(key, entry)
+    return entry
+  }
+
+  // Unicode 絵文字
+  const offscreen = document.createElement('canvas')
+  offscreen.width = canvasSize
+  offscreen.height = canvasSize
+  const offCtx = offscreen.getContext('2d')
+  offCtx.font = `${size}px ${FONT_FAMILY}`
+  offCtx.textAlign = 'center'
+  offCtx.textBaseline = 'middle'
+  offCtx.fillText(emoji, canvasSize / 2, canvasSize / 2)
+
+  const entry = { canvas: offscreen, half: canvasSize / 2, ready: true }
+  emojiCache.set(key, entry)
+  return entry
+}
+
+// --- パーティクル管理 ---
+// splice を避けて swap-and-pop で高速削除
+let particleCount = 0
+const particles = new Array(MAX_PARTICLES)
+for (let i = 0; i < MAX_PARTICLES; i++) {
+  particles[i] = { emoji: '', x: 0, y: 0, vx: 0, vy: 0, size: 0, rotation: 0, spinSpeed: 0, born: 0, lifetime: 0 }
+}
+
+function spawnParticle(emoji, x, y, vx, vy, size, spinSpeed, lifetime) {
+  if (particleCount >= MAX_PARTICLES) return
+  const p = particles[particleCount]
+  p.emoji = emoji
+  p.x = x
+  p.y = y
+  p.vx = vx
+  p.vy = vy
+  p.size = Math.round(size)
+  p.rotation = Math.random() * 6.28
+  p.spinSpeed = spinSpeed
+  p.born = performance.now()
+  p.lifetime = lifetime
+  particleCount++
+}
+
+/**
+ * クラッカー演出: 左下 or 右下から扇状に絵文字を射出
+ */
+function launchEmoji(emoji) {
+  const fromLeft = Math.random() < 0.5
+  const originX = fromLeft ? EMOJI_SIZE_MAX : canvas.width - EMOJI_SIZE_MAX
+  const originY = canvas.height - EMOJI_SIZE_MAX
+
+  for (let i = 0; i < PARTICLES_PER_EMOJI; i++) {
+    const delay = i * PARTICLE_INTERVAL_MS
+    setTimeout(() => {
+      const speed = LAUNCH_SPEED_MIN + Math.random() * (LAUNCH_SPEED_MAX - LAUNCH_SPEED_MIN)
+      const size = EMOJI_SIZE_MIN + Math.random() * (EMOJI_SIZE_MAX - EMOJI_SIZE_MIN)
+
+      const halfSpread = SPREAD_ANGLE / 2
+      const baseAngle = fromLeft ? -90 + 20 : -90 - 20
+      const angle = baseAngle + (Math.random() * SPREAD_ANGLE - halfSpread)
+      const rad = angle * Math.PI / 180
+
+      spawnParticle(
+        emoji, originX, originY,
+        Math.cos(rad) * speed, Math.sin(rad) * speed,
+        size, (Math.random() - 0.5) * SPIN_SPEED * 2 * Math.PI / 180,
+        PARTICLE_LIFETIME_MS * (0.8 + Math.random() * 0.4)
+      )
+    }, delay)
+  }
+}
+
+// --- 描画ループ ---
+let lastTime = performance.now()
+
+function update(now) {
+  const dt = (now - lastTime) / 1000
+  lastTime = now
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  let i = 0
+  while (i < particleCount) {
+    const p = particles[i]
+    const age = now - p.born
+
+    // 寿命切れ → swap-and-pop で削除
+    if (age > p.lifetime) {
+      particleCount--
+      if (i < particleCount) {
+        const last = particles[particleCount]
+        // swap fields
+        p.emoji = last.emoji; p.x = last.x; p.y = last.y
+        p.vx = last.vx; p.vy = last.vy; p.size = last.size
+        p.rotation = last.rotation; p.spinSpeed = last.spinSpeed
+        p.born = last.born; p.lifetime = last.lifetime
+      }
+      continue
+    }
+
+    // 物理演算
+    p.vy += GRAVITY * dt
+    p.x += p.vx * dt
+    p.y += p.vy * dt
+    p.rotation += p.spinSpeed * dt
+
+    // 床との衝突（画面下端で跳ね返り→停止）
+    const floor = canvas.height - p.size / 2
+    if (p.y > floor) {
+      p.y = floor
+      p.vy = -p.vy * 0.3 // 反発係数0.3で跳ね返り
+      p.vx *= 0.5         // 摩擦で横速度減衰
+      p.spinSpeed *= 0.3
+      if (Math.abs(p.vy) < 30) { // 十分遅くなったら停止
+        p.vy = 0
+        p.vx = 0
+        p.spinSpeed = 0
+      }
+    }
+
+    // 左右の壁
+    if (p.x < p.size / 2) {
+      p.x = p.size / 2
+      p.vx = -p.vx * 0.3
+    } else if (p.x > canvas.width - p.size / 2) {
+      p.x = canvas.width - p.size / 2
+      p.vx = -p.vx * 0.3
+    }
+
+    // フェードアウト（最後の30%で透明に）
+    const progress = age / p.lifetime
+    const alpha = progress > 0.7 ? 1 - (progress - 0.7) / 0.3 : 1
+
+    // キャッシュから描画（drawImage は fillText より大幅に高速）
+    const cached = getEmojiImage(p.emoji, p.size)
+    if (cached.ready) {
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.translate(p.x, p.y)
+      ctx.rotate(p.rotation)
+      ctx.drawImage(cached.canvas, -cached.half, -cached.half)
+      ctx.restore()
+    }
+
+    i++
+  }
+
+  requestAnimationFrame(update)
+}
+requestAnimationFrame(update)
+
+// --- データ取得 ---
+function extractEmojis(reactionData) {
+  const emojis = []
+  for (const item of reactionData) {
+    if (item && typeof item === 'object' && Array.isArray(item.reactions)) {
+      for (const r of item.reactions) {
+        const emoji = r.key === '🧡' ? '❤️' : r.key
+        const count = r.value || 1
+        if (emoji) {
+          for (let i = 0; i < count; i++) emojis.push(emoji)
+        }
+      }
+    }
+  }
+  return emojis
+}
+
+async function poll() {
+  try {
+    const res = await fetch(API_URL, { method: 'POST' })
+    if (!res.ok) return
+    const json = await res.json()
+    const reactions = json.reactions || json.response?.reactions || []
+    for (const reaction of reactions) {
+      const emojis = extractEmojis(reaction.data || [])
+      for (const emoji of emojis) {
+        const delay = Math.random() * 200
+        setTimeout(() => launchEmoji(emoji), delay)
+      }
+    }
+  } catch (e) {
+    // OneComme未起動時などはサイレントに無視
+  }
+}
+
+setInterval(poll, POLL_INTERVAL_MS)
+poll()
+</script>
+</body>
+</html>

@@ -47,9 +47,9 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '3.6.0',
+  version: '4.0.0',
   author: 'matsufriends',
-  permissions: ['filter.comment'],
+  permissions: ['filter.comment', 'reactions'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
   defaultState: {
     dictionary: {},
@@ -58,9 +58,15 @@ const plugin = {
   store: null,
   githubToken: '',
 
+  // --- リアクションエフェクト用 ---
+  _reactionQueue: [],
+  _emojiRegex: /\p{Emoji_Presentation}|\p{Emoji}\uFE0F/gu,
+  _customEmojiRegex: /data-src="([^"]+)"/g,
+
   init({ dir, store }) {
     this.store = store
     this.dir = dir
+    this._reactionQueue = []
 
     // config.json からトークンを読み込み
     try {
@@ -74,9 +80,17 @@ const plugin = {
 
     // 起動時にGitHubからyomiage.jsonを取得して辞書を同期
     this._syncFromGitHub()
+
+    console.info('[yomiage-dictionary] Overlay: file://' + path.join(dir, 'overlay.html'))
   },
 
   destroy() {},
+
+  subscribe(type, ...args) {
+    if (type === 'reactions') {
+      this._reactionQueue.push({ timestamp: Date.now(), data: args })
+    }
+  },
 
   filterComment(comment) {
     // HTMLタグを除去（imgはalt属性の値に変換）してからパターンマッチ
@@ -155,7 +169,39 @@ const plugin = {
       comment.data.speechText = speech
     }
 
+    // --- リアクションエフェクト: 絵文字検出 ---
+    this._detectEmojis(comment)
+
     return comment
+  },
+
+  _detectEmojis(comment) {
+    const rawText = comment.data.comment
+    const speechText = comment.data.speechText || ''
+    const reactions = []
+
+    // Unicode 絵文字（生コメント + 辞書変換後の両方から検出）
+    const allText = rawText + ' ' + speechText
+    const unicodeEmojis = allText.match(this._emojiRegex)
+    if (unicodeEmojis) {
+      for (const e of unicodeEmojis) {
+        reactions.push({ key: e, value: 1 })
+      }
+    }
+
+    // カスタム絵文字（<img data-src="...">）
+    this._customEmojiRegex.lastIndex = 0
+    let match
+    while ((match = this._customEmojiRegex.exec(rawText)) !== null) {
+      reactions.push({ key: 'img:' + match[1], value: 1 })
+    }
+
+    if (reactions.length > 0) {
+      this._reactionQueue.push({
+        timestamp: Date.now(),
+        data: [{ reactions, effect: true }],
+      })
+    }
   },
 
   async request(req) {
@@ -168,6 +214,11 @@ const plugin = {
             githubToken: this.githubToken ? '(set)' : '(not set)',
           },
         }
+      case 'POST': {
+        // リアクションキューを返してクリア
+        const reactions = this._reactionQueue.splice(0)
+        return { code: 200, response: { reactions } }
+      }
       case 'PUT': {
         const data = JSON.parse(req.body)
         if (data.dictionary !== undefined) {
