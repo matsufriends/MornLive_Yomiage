@@ -202,9 +202,11 @@ function showBubble(userId, rawHtml) {
 
   const plainText = stripHtml(rawHtml);
 
-  // コメントしたら興奮状態：文字数に応じて速く・長く走り回る
-  const excitedDuration = Math.max(1000, plainText.length * EXCITED_MS_PER_CHAR);
-  char.excitedUntil = Date.now() + excitedDuration;
+  // 吹き出し表示時間：文字数に応じて長く
+  const bubbleDuration = Math.max(BUBBLE_DURATION, plainText.length * EXCITED_MS_PER_CHAR);
+
+  // 興奮状態：吹き出しが消えるまで走り回る、文字数が多いほど速い
+  char.excitedUntil = Date.now() + bubbleDuration;
   char.excitedSpeed = EXCITED_SPEED + plainText.length * 0.5;
 
   // フォントサイズ調整：4行以上になりそうなら縮小
@@ -224,7 +226,7 @@ function showBubble(userId, rawHtml) {
   char.bubbleTimer = setTimeout(() => {
     char.bubble.classList.remove('visible');
     char.bubbleTimer = null;
-  }, BUBBLE_DURATION);
+  }, bubbleDuration);
 }
 
 function startWandering(userId) {
