@@ -77,9 +77,6 @@
       -2px  0   0 #000,
        2px  0   0 #000;
     text-align: center;
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 </style>
@@ -225,7 +222,7 @@ function animate() {
 }
 
 // OneSDKで接続
-OneSDK.setup({ mode: 'diff' });
+OneSDK.setup({ mode: 'all' });
 OneSDK.subscribe({
   action: 'comments',
   callback: (comments) => {
