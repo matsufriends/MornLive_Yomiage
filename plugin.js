@@ -47,7 +47,7 @@ function githubApi(method, endpoint, token, body) {
 const plugin = {
   name: '読み上げ辞書プラグイン',
   uid: 'com.matsufriends.yomiage-dictionary',
-  version: '4.0.0',
+  version: '4.1.0',
   author: 'matsufriends',
   permissions: ['filter.comment', 'reactions'],
   url: 'https://github.com/matsufriends/MornLive_Yomiage',
@@ -157,11 +157,14 @@ const plugin = {
       }
     }
 
-    // 辞書による置換（speechTextに直接適用）
-    if (comment.data.speechText) {
-      const dict = this.store.get('dictionary') || {}
+    // 辞書による置換
+    // speechText にはカスタム絵文字の実体（URL等）が入る場合があり、
+    // alt文字列（例: ":cat-orange-whistling:"）でマッチしないため、
+    // imgのaltを展開した text を基準に speechText を再構築する。
+    const dict = this.store.get('dictionary') || {}
+    if (Object.keys(dict).length > 0) {
       const keys = Object.keys(dict).sort((a, b) => b.length - a.length)
-      let speech = comment.data.speechText
+      let speech = text
       for (const from of keys) {
         const regex = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
         speech = speech.replace(regex, dict[from])
